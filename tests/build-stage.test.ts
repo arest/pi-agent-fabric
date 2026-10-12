@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import { test } from "node:test";
 import { BuildEvidenceError } from "../src/artifacts/build.ts";
 import { runBuildStage, type Builder, type WorktreeProvider } from "../src/workflow/build-stage.ts";
+import { acquireLock } from "../src/state/lock.ts";
 import { startJob } from "../src/workflow/start-job.ts";
 import { runSpecStage } from "../src/workflow/spec-stage.ts";
 import { completeSpecMarkdown, makeTempRepo, readBoard, readJobEvents, removeTempRepo } from "./helpers/harness.ts";
@@ -47,6 +48,30 @@ test("builder captures evidence and advances build to review", async () => {
   }
 });
 
+test("configured validation outcomes are persisted in build evidence", async () => {
+  const cwd = await makeTempRepo();
+  try {
+    await fs.mkdir(path.join(cwd, ".pi"), { recursive: true });
+    await fs.writeFile(path.join(cwd, ".pi", "factory.json"), JSON.stringify({
+      schema_version: 1,
+      repository: { test_commands: [{ name: "unit", command: "node --version" }] },
+    }));
+    const jobId = await seedBuild(cwd);
+    const result = await runBuildStage({
+      cwd,
+      jobId,
+      builder: builderWith(),
+      worktree: provider(cwd),
+      now: NOW,
+      runValidation: async (command) => ({ ...command, outcome: "PASS", output: "ok" }),
+    });
+    assert.equal(result.validation[0]?.outcome, "PASS");
+    assert.match(await fs.readFile(result.buildFile, "utf8"), /unit: PASS/);
+  } finally {
+    await removeTempRepo(cwd);
+  }
+});
+
 test("incomplete build evidence fails closed and blocks the job", async () => {
   const cwd = await makeTempRepo();
   try {
@@ -59,6 +84,29 @@ test("incomplete build evidence fails closed and blocks the job", async () => {
     assert.equal(board.jobs[0]?.stage, "build");
     assert.equal(board.jobs[0]?.status, "blocked");
     assert.match(board.jobs[0]?.history.at(-1)?.event ?? "", /build_failed:incomplete_evidence/);
+  } finally {
+    await removeTempRepo(cwd);
+  }
+});
+
+test("lock timeout leaves the active job unchanged", async () => {
+  const cwd = await makeTempRepo();
+  try {
+    const jobId = await seedBuild(cwd);
+    const held = await acquireLock(path.join(cwd, "builder.lock"));
+    try {
+      const before = await readBoard(cwd);
+      await assert.rejects(
+        () => runBuildStage({ cwd, jobId, builder: builderWith(), worktree: provider(cwd), lockOptions: { timeoutMs: 5, pollMs: 1 } }),
+        /timed out.*builder.lock/,
+      );
+      const after = await readBoard(cwd);
+      assert.equal(after.version, before.version);
+      assert.equal(after.jobs[0]?.status, "active");
+      assert.equal(after.jobs[0]?.stage, "build");
+    } finally {
+      await held.release();
+    }
   } finally {
     await removeTempRepo(cwd);
   }

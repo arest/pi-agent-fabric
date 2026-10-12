@@ -2,11 +2,11 @@ import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
-import { assertBuildComplete } from "../artifacts/build.ts";
+import { assertBuildComplete, BuildEvidenceError } from "../artifacts/build.ts";
 import type { Board, Job } from "../state/board.ts";
 import { BoardStore } from "../state/board-store.ts";
 import { appendJobEvent, readJobEvents } from "../state/job-events.ts";
-import { acquireLock, LockTimeoutError, type LockHandle } from "../state/lock.ts";
+import { acquireLock, LockTimeoutError, type LockHandle, type LockOptions } from "../state/lock.ts";
 import { factoryPaths, jobBuildFile, jobSpecFile, jobWorktree } from "../state/paths.ts";
 import { InvalidJobStateError, JobNotFoundError, SpecNotFoundError } from "./errors.ts";
 import { loadPolicy, type FactoryPolicy } from "../config/policy.ts";
@@ -62,6 +62,8 @@ export interface RunBuildStageInput {
   worktree?: WorktreeProvider;
   now?: () => Date;
   runValidation?: (command: { name: string; command: string }, cwd: string) => Promise<ValidationResult>;
+  /** Injectable lock timing for hosts and deterministic contention tests. */
+  lockOptions?: LockOptions;
 }
 
 export interface RunBuildStageResult {
@@ -91,7 +93,7 @@ export async function runBuildStage(input: RunBuildStageInput): Promise<RunBuild
   const prepared = await (input.worktree ?? gitWorktreeProvider).prepare({ cwd: input.cwd, job });
   let lock: LockHandle | undefined;
   try {
-    lock = await acquireLock(prepared.lockPath);
+    lock = await acquireLock(prepared.lockPath, input.lockOptions);
     const lockedBoard = await store.read();
     const lockedJob = lockedBoard.jobs.find((candidate) => candidate.id === job.id);
     if (!lockedJob) throw new JobNotFoundError(job.id);
@@ -100,7 +102,7 @@ export async function runBuildStage(input: RunBuildStageInput): Promise<RunBuild
     const validation: ValidationResult[] = [];
     const buildFile = jobBuildFile(paths, job.id);
     await input.builder({
-      cwd: paths.root,
+      cwd: prepared.path,
       worktree: prepared.path,
       specFile: jobSpecFile(paths, job.id),
       buildFile,
@@ -136,8 +138,9 @@ export async function runBuildStage(input: RunBuildStageInput): Promise<RunBuild
   } catch (error) {
     if (error instanceof BuildFailedError) throw error;
     if (error instanceof LockTimeoutError) {
-      await recordBuildFailure(store, paths, job.id, input.now, "worktree_lock_timeout");
-    } else if (error instanceof Error && error.name === "BuildEvidenceError") {
+      // A live builder may still own the worktree. Do not block its job while
+      // merely reporting contention; the owner must be allowed to finish.
+    } else if (error instanceof BuildEvidenceError) {
       await recordBuildFailure(store, paths, job.id, input.now, "incomplete_evidence");
     } else if (!(error instanceof InvalidJobStateError)) {
       await recordBuildFailure(store, paths, job.id, input.now, "builder_error");
@@ -197,14 +200,14 @@ export function renderBuildEvidence(validation: ValidationResult[]): string {
 
 async function mergeValidationEvidence(file: string, validation: ValidationResult[]): Promise<void> {
   const markdown = await fs.readFile(file, "utf8");
-  const heading = /^##\\s+Validation\\s*$/im;
+  const heading = /^##\s+Validation\s*$/im;
   const match = heading.exec(markdown);
-  const section = `## Validation\\n\\n${renderBuildEvidence(validation)}\\n`;
+  const section = `## Validation\n\n${renderBuildEvidence(validation)}\n`;
   if (!match || match.index === undefined) {
-    await fs.writeFile(file, `${markdown.trimEnd()}\\n\\n${section}`, "utf8");
+    await fs.writeFile(file, `${markdown.trimEnd()}\n\n${section}`, "utf8");
     return;
   }
-  const nextHeading = /\\n##\\s+/g;
+  const nextHeading = /\n##\s+/g;
   nextHeading.lastIndex = match.index + match[0].length;
   const next = nextHeading.exec(markdown);
   const end = next?.index ?? markdown.length;
