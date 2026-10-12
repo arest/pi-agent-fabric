@@ -50,6 +50,7 @@ summary of them.
     {
       "id": "001-rate-limiting",
       "feature": "Add rate limiting to the public API",
+      "policy": { "v": 1, "source": "repo", "mode": "develop", "target": "develop" },
       "mode": "develop",
       "branch": "factory/001-rate-limiting",
       "target": "develop",

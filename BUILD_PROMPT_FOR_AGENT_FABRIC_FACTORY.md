@@ -221,6 +221,7 @@ Example:
 
 ```json
 {
+  "schema_version": 1,
   "target_mode": "develop",
   "promotion": {
     "develop": { "human_merge_required": true },

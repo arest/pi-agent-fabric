@@ -40,6 +40,81 @@ test("/factory is registered as a command", async (t) => {
   assert.match(command.description ?? "", /feature/i);
 });
 
+test("missing policy uses safe defaults and records the effective policy", async (t) => {
+  const cwd = await makeTempRepo();
+  t.after(() => removeTempRepo(cwd));
+
+  const { job } = await startJob({ cwd, feature: "Default policy" });
+
+  assert.equal(job.mode, "develop");
+  assert.equal(job.target, "develop");
+  assert.deepEqual(job.policy, { v: 1, source: "default", mode: "develop", target: "develop" });
+});
+
+test("a valid repository policy is loaded before starting a job", async (t) => {
+  const cwd = await makeTempRepo();
+  t.after(() => removeTempRepo(cwd));
+
+  await fs.mkdir(path.join(cwd, ".pi"), { recursive: true });
+  await fs.writeFile(
+    path.join(cwd, ".pi", "factory.json"),
+    JSON.stringify({
+      schema_version: 1,
+      target_mode: "develop",
+      reviewers: { available: ["code"], required: ["code"], selection: "orchestrator" },
+      limits: { max_review_rounds: 3, max_jobs_per_batch: 10 },
+      github: { adapter: "gh", auto_merge: false },
+      promotion: { develop: { human_merge_required: true } },
+    }),
+  );
+
+  const { job } = await startJob({ cwd, feature: "Configured policy" });
+  assert.equal(job.mode, "develop");
+  assert.equal(job.target, "develop");
+  assert.deepEqual(job.policy, { v: 1, source: "repo", mode: "develop", target: "develop" });
+});
+
+test("invalid or unsafe policy fails closed before any side effect", async (t) => {
+  const cwd = await makeTempRepo();
+  t.after(() => removeTempRepo(cwd));
+
+  await fs.mkdir(path.join(cwd, ".pi"), { recursive: true });
+  await fs.writeFile(path.join(cwd, ".pi", "factory.json"), JSON.stringify({ schema_version: 1, target_mode: "aggregator" }));
+
+  const harness = createHarness(cwd);
+  await harness.run("factory", "Unsafe policy");
+
+  assert.equal(harness.notifications.length, 1);
+  assert.equal(harness.notifications[0]?.type, "error");
+  assert.match(harness.notifications[0]?.message ?? "", /target_mode/i);
+  await assert.rejects(fs.access(path.join(cwd, "factory")));
+});
+
+test("unsafe configured commands are rejected before startup", async (t) => {
+  const cwd = await makeTempRepo();
+  t.after(() => removeTempRepo(cwd));
+
+  await fs.mkdir(path.join(cwd, ".pi"), { recursive: true });
+  await fs.writeFile(
+    path.join(cwd, ".pi", "factory.json"),
+    JSON.stringify({ schema_version: 1, repository: { test_commands: [{ name: "all", command: "npm test; rm -rf /" }] } }),
+  );
+
+  await assert.rejects(startJob({ cwd, feature: "Unsafe command" }), /unsafe shell syntax/);
+  await assert.rejects(fs.access(boardPath(cwd)));
+});
+
+test("malformed policy fails closed without creating a board", async (t) => {
+  const cwd = await makeTempRepo();
+  t.after(() => removeTempRepo(cwd));
+
+  await fs.mkdir(path.join(cwd, ".pi"), { recursive: true });
+  await fs.writeFile(path.join(cwd, ".pi", "factory.json"), "{ not json");
+
+  await assert.rejects(startJob({ cwd, feature: "Malformed policy" }), /not valid JSON/);
+  await assert.rejects(fs.access(boardPath(cwd)));
+});
+
 test("starting a job seeds a durable board entry and job scaffold", async (t) => {
   const cwd = await makeTempRepo();
   t.after(() => removeTempRepo(cwd));

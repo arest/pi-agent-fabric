@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import type { Board, Job } from "../state/board.ts";
 import { BoardStore } from "../state/board-store.ts";
+import { loadPolicy, policySnapshot } from "../config/policy.ts";
 import { writeFileAtomic } from "../state/atomic-write.ts";
 import { allocateJobId } from "../state/job-id.ts";
 import { factoryPaths, jobDir, jobEventsFile } from "../state/paths.ts";
@@ -32,16 +33,20 @@ export interface StartJobResult {
 /**
  * Create a new factory job scaffold.
  *
- * This is the first durable workflow step: it allocates a job id, creates the
- * job artifact directory with its event log, and appends an `active`/`spec`
- * job to the extension-owned board. Specification, build, review, approval,
- * and publication stages are implemented by later tickets; no reviewers or
- * approval flow run here.
+ * This is the first durable workflow step: it validates repository policy before
+ * allocating a job id or creating any durable artifacts, then creates the job
+ * scaffold and appends an `active`/`spec` job to the extension-owned board.
+ * Specification, build, review, approval, and publication stages are implemented
+ * by later tickets; no reviewers or approval flow run here.
  */
 export async function startJob(input: StartJobInput): Promise<StartJobResult> {
   const feature = input.feature.trim();
   if (feature.length === 0) throw new InvalidFeatureError();
 
+  // This must remain before BoardStore construction/mutation: invalid policy is
+  // a fail-closed startup error with no board, lock, or job-artifact side effect.
+  const policy = await loadPolicy(input.cwd);
+  const snapshot = policySnapshot(policy);
   const now = input.now ?? ((): Date => new Date());
   const timestamp = now().toISOString();
   const store = new BoardStore(input.cwd);
@@ -70,7 +75,8 @@ export async function startJob(input: StartJobInput): Promise<StartJobResult> {
       const job: Job = {
         id,
         feature,
-        mode: "develop",
+        policy: snapshot,
+        mode: policy.target_mode,
         branch: `factory/${id}`,
         target: "develop",
         stage: "spec",

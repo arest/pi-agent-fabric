@@ -11,9 +11,10 @@ The package ships:
 
 ## Status
 
-Bootstrap slice: `/factory <feature>` creates a new job scaffold. Later tickets
-add the policy gate, spec-writer, builder, reviewers, approver, GitHub
-publication, operator commands, crash recovery, and the read-only dashboard.
+Bootstrap slice: `/factory <feature>` validates repository policy and creates a
+new job scaffold. Later tickets add the spec-writer, builder, reviewers,
+approver, GitHub publication, operator commands, crash recovery, and the
+read-only dashboard.
 
 ```text
 /factory <feature>   start a job scaffold (implemented)
@@ -52,8 +53,10 @@ factory/
 
 `factory/board.json` is extension-owned durable state: writes are serialized by
 a lock, applied to a private copy, version-checked, and swapped in atomically.
-Child roles never write it. The job starts at stage `spec` with status `active`;
-reviewer and approval flow are added by later tickets.
+Child roles never write it. If `.pi/factory.json` exists, it must be valid and
+safe before any board or job artifact is created; otherwise safe `develop`
+defaults apply. The job starts at stage `spec` with status `active`; reviewer
+and approval flow are added by later tickets.
 
 ## Development
 

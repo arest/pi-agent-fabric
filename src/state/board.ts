@@ -64,9 +64,17 @@ export interface HistoryEntry {
   event?: string;
 }
 
+export interface JobPolicySnapshot {
+  v: 1;
+  source: "default" | "repo";
+  mode: Mode;
+  target: string;
+}
+
 export interface Job {
   id: string;
   feature: string;
+  policy?: JobPolicySnapshot;
   mode: Mode;
   branch: string;
   target: string;
@@ -154,6 +162,14 @@ function parseReviewPlan(value: unknown, jobId: string): ReviewPlan | null {
   return { selected, skipped, reasons };
 }
 
+function parsePolicySnapshot(value: unknown, jobId: string): JobPolicySnapshot | undefined {
+  if (value === undefined) return undefined;
+  if (!isRecord(value) || value.v !== 1 || (value.source !== "default" && value.source !== "repo") || value.mode !== "develop" || value.target !== "develop") {
+    throw new BoardIntegrityError(`job ${jobId} has an invalid policy snapshot`);
+  }
+  return { v: 1, source: value.source, mode: "develop", target: value.target };
+}
+
 function parsePullRequest(value: unknown, jobId: string): PullRequest | null {
   if (value === null || value === undefined) return null;
   if (!isRecord(value)) {
@@ -203,6 +219,7 @@ function parseJob(value: unknown, index: number): Job {
   return {
     id,
     feature,
+    policy: parsePolicySnapshot(value.policy, id),
     mode: "develop",
     branch,
     target,
