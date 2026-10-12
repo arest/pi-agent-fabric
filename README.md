@@ -11,11 +11,12 @@ The package ships:
 
 ## Status
 
-Bootstrap + spec slice: `/factory <feature>` validates repository policy and
-creates a new job scaffold, and `/factory spec <job-id>` runs the spec-writer
-stage so a job only reaches `build` with a complete, auditable `spec.md`.
-Later tickets add the builder, reviewers, approver, GitHub publication,
-operator commands, crash recovery, and the read-only dashboard.
+Bootstrap, spec, and builder slices are implemented. `/factory <feature>`
+validates repository policy and creates a new job scaffold, `/factory spec
+<job-id>` runs the spec-writer stage, and the builder workflow runs in an
+isolated job worktree while capturing validated `build.md` evidence. Later
+tickets add reviewers, approver, GitHub publication, operator commands, crash
+recovery, and the read-only dashboard.
 
 ```text
 /factory <feature>      start a job scaffold           (implemented)
@@ -92,3 +93,18 @@ npm run check       # typecheck + tests
 - `adr/0001-pi-agent-fabric-factory.md` — the architectural decision.
 - `BUILD_PROMPT_FOR_AGENT_FABRIC_FACTORY.md` — the design brief.
 - `skills/factory/` — workflow guidance loaded by Pi.
+
+## Builder stage
+
+The reusable `runBuildStage` workflow accepts a builder role and a worktree
+provider. The default provider creates `factory/worktrees/<job-id>` with the
+job branch through `git worktree`; tests and other hosts can inject a provider.
+A lock inside the prepared worktree is held for the entire builder execution,
+so jobs sharing a worktree cannot write application code concurrently.
+
+The builder owns `build.md`, which must contain `## Changed files`,
+`## Validation`, and `## Remaining risks`. Configured `.pi/factory.json`
+validation commands run in the prepared worktree and their PASS/FAIL outcomes
+are persisted in the validation section. Any failed validation, builder error,
+or incomplete evidence blocks the job at `build` rather than advancing it to
+review.
