@@ -6,7 +6,9 @@ import { factoryPaths } from "../src/state/paths.ts";
 import { startJob } from "../src/workflow/start-job.ts";
 import {
   boardPath,
+  completeSpecMarkdown,
   createHarness,
+  jobSpecPath,
   makeTempRepo,
   readBoard,
   readJobEvents,
@@ -255,4 +257,105 @@ test("a failed artifact write rolls back the job directory", async (t) => {
   const board = JSON.parse(await fs.readFile(paths.boardFile, "utf8")) as { version: number; jobs: unknown[] };
   assert.equal(board.version, 1, "the board must be left untouched when the job cannot be written");
   assert.deepEqual(board.jobs, []);
+});
+
+test("/factory spec without a job id reports usage and creates nothing", async (t) => {
+  const cwd = await makeTempRepo();
+  t.after(() => removeTempRepo(cwd));
+
+  const harness = createHarness(cwd);
+  await harness.run("factory", "spec");
+
+  assert.equal(harness.notifications.length, 1);
+  assert.equal(harness.notifications[0].type, "warning");
+  assert.match(harness.notifications[0].message, /usage/i);
+  await assert.rejects(fs.access(boardPath(cwd)), "a spec invocation must never be treated as a feature request");
+});
+
+test("feature text that merely starts with spec still starts a job", async (t) => {
+  const cwd = await makeTempRepo();
+  t.after(() => removeTempRepo(cwd));
+
+  const harness = createHarness(cwd);
+  await harness.run("factory", "spec cleanup of request logs");
+
+  assert.equal(harness.notifications.length, 1);
+  assert.equal(harness.notifications[0].type, "info");
+  const board = await readBoard(cwd);
+  assert.equal(board.jobs.length, 1);
+  assert.equal(board.jobs[0].feature, "spec cleanup of request logs");
+  assert.equal(board.jobs[0].stage, "spec");
+});
+
+test("a single non-job-id argument after spec warns instead of starting a job", async (t) => {
+  const cwd = await makeTempRepo();
+  t.after(() => removeTempRepo(cwd));
+
+  const harness = createHarness(cwd);
+  await harness.run("factory", "spec 12-not-a-real-id");
+
+  assert.equal(harness.notifications.length, 1);
+  assert.equal(harness.notifications[0].type, "warning");
+  assert.match(harness.notifications[0].message, /not a job id/i);
+  await assert.rejects(fs.access(boardPath(cwd)), "a malformed job id must not start a job");
+});
+
+test("/factory spec scaffolds the artifact and refuses to advance an empty spec", async (t) => {
+  const cwd = await makeTempRepo();
+  t.after(() => removeTempRepo(cwd));
+
+  const harness = createHarness(cwd);
+  await harness.run("factory", "Add rate limiting to the public API");
+  const jobId = (await readBoard(cwd)).jobs[0].id;
+
+  await harness.run("factory", `spec ${jobId}`);
+
+  const errors = harness.notifications.filter((notification) => notification.type === "error");
+  assert.equal(errors.length, 1);
+  assert.match(errors[0].message, /missing/i);
+  assert.match(errors[0].message, /Problem/);
+
+  const spec = await fs.readFile(jobSpecPath(cwd, jobId), "utf8");
+  assert.match(spec, /^## Problem$/m, "the stage must scaffold the spec-writer artifact");
+
+  const board = await readBoard(cwd);
+  assert.equal(board.jobs[0].stage, "spec", "an incomplete spec must not advance the job");
+  const events = await readJobEvents(cwd, jobId);
+  assert.deepEqual(events.map((event) => event.event), ["job_created"]);
+});
+
+test("/factory spec advances the job to build once the contract is complete", async (t) => {
+  const cwd = await makeTempRepo();
+  t.after(() => removeTempRepo(cwd));
+
+  const harness = createHarness(cwd);
+  await harness.run("factory", "Add rate limiting to the public API");
+  const jobId = (await readBoard(cwd)).jobs[0].id;
+
+  await fs.writeFile(jobSpecPath(cwd, jobId), completeSpecMarkdown(), "utf8");
+  await harness.run("factory", `spec ${jobId}`);
+
+  assert.equal(harness.notifications.length, 2);
+  assert.equal(harness.notifications[1].type, "info");
+  assert.match(harness.notifications[1].message, /advanced to stage build/i);
+
+  const board = await readBoard(cwd);
+  assert.equal(board.jobs[0].stage, "build");
+  assert.equal(board.jobs[0].history.at(-1)?.event, "spec_complete");
+
+  const events = await readJobEvents(cwd, jobId);
+  assert.deepEqual(events.map((event) => event.event), ["job_created", "spec_complete"]);
+});
+
+test("/factory spec reports an unknown job without creating one", async (t) => {
+  const cwd = await makeTempRepo();
+  t.after(() => removeTempRepo(cwd));
+
+  const harness = createHarness(cwd);
+  await harness.run("factory", "spec 001-missing-job");
+
+  assert.equal(harness.notifications.length, 1);
+  assert.equal(harness.notifications[0].type, "error");
+  assert.match(harness.notifications[0].message, /no factory job/i);
+  await assert.rejects(fs.access(boardPath(cwd)));
 });

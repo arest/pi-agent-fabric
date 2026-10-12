@@ -38,3 +38,8 @@ export function jobDir(paths: FactoryPaths, jobId: string): string {
 export function jobEventsFile(paths: FactoryPaths, jobId: string): string {
   return path.join(jobDir(paths, jobId), "events.jsonl");
 }
+
+/** `factory/jobs/<job-id>/spec.md` — the spec-writer's specification artifact. */
+export function jobSpecFile(paths: FactoryPaths, jobId: string): string {
+  return path.join(jobDir(paths, jobId), "spec.md");
+}

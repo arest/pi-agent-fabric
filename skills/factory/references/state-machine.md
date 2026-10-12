@@ -88,7 +88,7 @@ the feature text and contains only `[a-z0-9-]`.
 | Trigger | From | To |
 |---|---|---|
 | `/factory <feature>` | — | new job at `spec` / `active` |
-| spec contract complete | `spec` | `build` |
+| `/factory spec <job-id>` with a complete `spec.md` | `spec` | `build` |
 | build evidence complete | `build` | `review` |
 | all selected reviewers reported | `review` | `approval` |
 | blocking `CHANGES` | `review` | `build` (round + 1, history retained) |

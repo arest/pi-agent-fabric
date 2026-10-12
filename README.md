@@ -11,13 +11,15 @@ The package ships:
 
 ## Status
 
-Bootstrap slice: `/factory <feature>` validates repository policy and creates a
-new job scaffold. Later tickets add the spec-writer, builder, reviewers,
-approver, GitHub publication, operator commands, crash recovery, and the
-read-only dashboard.
+Bootstrap + spec slice: `/factory <feature>` validates repository policy and
+creates a new job scaffold, and `/factory spec <job-id>` runs the spec-writer
+stage so a job only reaches `build` with a complete, auditable `spec.md`.
+Later tickets add the builder, reviewers, approver, GitHub publication,
+operator commands, crash recovery, and the read-only dashboard.
 
 ```text
-/factory <feature>   start a job scaffold (implemented)
+/factory <feature>      start a job scaffold           (implemented)
+/factory spec <job-id>  complete the spec stage        (implemented)
 ```
 
 All other `/factory` subcommands are not implemented yet and report that they
@@ -55,8 +57,23 @@ factory/
 a lock, applied to a private copy, version-checked, and swapped in atomically.
 Child roles never write it. If `.pi/factory.json` exists, it must be valid and
 safe before any board or job artifact is created; otherwise safe `develop`
-defaults apply. The job starts at stage `spec` with status `active`; reviewer
-and approval flow are added by later tickets.
+defaults apply. The job starts at stage `spec` with status `active`.
+
+## Completing the spec stage
+
+The spec-writer role owns `factory/jobs/<job-id>/spec.md`. Running
+`/factory spec <job-id>` creates the contract scaffold when the artifact is
+missing, validates it, and advances the job to `build` only when the required
+sections (Problem, Scope, Acceptance criteria, Validation commands, Risks and
+assumptions) have real content. An incomplete specification fails closed and
+leaves the board at `spec`, so a later attempt resumes without duplicating
+history:
+
+```text
+/factory Add rate limiting to the public API
+# write the required sections into factory/jobs/001-.../spec.md
+/factory spec 001-add-rate-limiting-to-the-public-api
+```
 
 ## Development
 

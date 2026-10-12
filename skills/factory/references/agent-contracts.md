@@ -43,8 +43,25 @@ never treated as an implicit pass.
 
 ## Spec contract
 
-`spec.md` records the problem statement, scope and non-goals, acceptance
-criteria, affected areas, validation commands, and risks and assumptions.
+`spec.md` is the durable contract between the spec-writer and every later role.
+It is a Markdown document whose sections are level-2 headings. Heading matching
+is case-insensitive and punctuation-insensitive, so `## Scope & non-goals`
+matches `## Scope`.
+
+Required sections, all of which must have real content before a job can leave
+the `spec` stage:
+
+- **Problem**
+- **Scope**
+- **Acceptance criteria**
+- **Validation commands**
+- **Risks and assumptions**
+
+**Affected areas** is expected by the full contract and is recognized by the
+validator, but is advisory in this slice. A heading whose body is empty,
+whitespace, or only an HTML comment counts as missing; a scaffold therefore
+never passes. When a heading is repeated, the first occurrence is the one that
+counts. Content inside fenced code blocks is never read as a heading.
 
 ## Build evidence
 

@@ -26,12 +26,32 @@ PR waiting for human merge
 ## Commands
 
 ```text
-/factory <feature>   start a job scaffold (implemented)
+/factory <feature>     start a job scaffold (implemented)
+/factory spec <job-id> scaffold, validate, and advance the job's spec stage (implemented)
 ```
 
 Later tickets add `/factory next`, `approve`, `rework`, `retry`, `promote`, and
 `cancel`. Do not invent behavior for commands that are not implemented: report
 that the command is unavailable instead.
+
+`spec` selects a subcommand only with exactly one argument that looks like a job
+id (`NNN-slug`). A lone non-id argument is reported as a likely typo rather than
+starting a job, and two or more words are read as an ordinary feature request.
+
+## Spec stage
+
+A job starts at `spec`. The spec-writer role owns `factory/jobs/<job-id>/spec.md`;
+the extension never authors the specification's meaning. It may scaffold the
+empty contract skeleton when the artifact is absent, then it validates the
+artifact and records the transition. Running `/factory spec <job-id>` advances
+the job to `build` only when every required section has real content. An empty
+or partial specification is rejected without touching the board, so a later
+attempt resumes cleanly.
+
+Required sections (level-2 headings, case-insensitive): **Problem**, **Scope**,
+**Acceptance criteria**, **Validation commands**, **Risks and assumptions**.
+**Affected areas** is expected but advisory in this slice. A heading with no
+content, or with only an HTML comment, counts as missing.
 
 ## Before acting on a job
 
@@ -60,8 +80,9 @@ factory/
   board.json                  durable board state (extension-owned)
   jobs/<job-id>/
     events.jsonl              append-only job event log
+    spec.md                   spec-writer specification artifact
 ```
 
-The full job layout (`spec.md`, `build.md`, `review-plan.json`, round reports,
+The full job layout (`build.md`, `review-plan.json`, round reports,
 `decision.md`) is defined in `references/agent-contracts.md` and is populated by
 later workflow stages.

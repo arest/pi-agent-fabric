@@ -2,9 +2,9 @@ import fs from "node:fs/promises";
 import type { Board, Job } from "../state/board.ts";
 import { BoardStore } from "../state/board-store.ts";
 import { loadPolicy, policySnapshot } from "../config/policy.ts";
-import { writeFileAtomic } from "../state/atomic-write.ts";
 import { allocateJobId } from "../state/job-id.ts";
-import { factoryPaths, jobDir, jobEventsFile } from "../state/paths.ts";
+import { appendJobEvent } from "../state/job-events.ts";
+import { factoryPaths, jobDir } from "../state/paths.ts";
 
 /** Thrown when a start request has no usable feature text. */
 export class InvalidFeatureError extends Error {
@@ -70,7 +70,7 @@ export async function startJob(input: StartJobInput): Promise<StartJobResult> {
         actor: "factory",
         event: "job_created",
       };
-      await writeFileAtomic(jobEventsFile(paths, id), `${JSON.stringify({ ...jobCreated, job_id: id })}\n`);
+      await appendJobEvent(paths, id, jobCreated);
 
       const job: Job = {
         id,

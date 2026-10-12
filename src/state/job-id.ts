@@ -16,6 +16,15 @@ export function slugify(feature: string): string {
 }
 
 /**
+ * Whether a string has the shape `allocateJobId` produces (`NNN-slug`).
+ *
+ * Operator commands use this to tell a job id apart from ordinary feature text.
+ */
+export function isJobId(value: string): boolean {
+  return /^\d{3}-[a-z0-9-]+$/.test(value);
+}
+
+/**
  * Allocate the next sequential job id (`NNN-slug`).
  *
  * Callers must run this inside the board write lock so two concurrent starts

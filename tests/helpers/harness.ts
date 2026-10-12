@@ -81,6 +81,27 @@ export function jobEventsPath(cwd: string, jobId: string): string {
   return path.join(jobDirPath(cwd, jobId), "events.jsonl");
 }
 
+/** Path of the spec-writer's artifact for a job. */
+export function jobSpecPath(cwd: string, jobId: string): string {
+  return path.join(jobDirPath(cwd, jobId), "spec.md");
+}
+
+/** A spec.md body that satisfies every required section of the contract. */
+export function completeSpecMarkdown(overrides: Record<string, string> = {}): string {
+  const sections: Record<string, string> = {
+    Problem: "Rate limiting is missing, so one client can exhaust the API.",
+    Scope: "Add per-key limits to the public API. Non-goal: billing integration.",
+    "Acceptance criteria": "- [ ] Requests above the limit return 429.",
+    "Affected areas": "src/http/middleware",
+    "Validation commands": "npm test",
+    "Risks and assumptions": "Assumes the gateway forwards client keys.",
+    ...overrides,
+  };
+  return `${Object.entries(sections)
+    .map(([title, body]) => `## ${title}\n\n${body}\n`)
+    .join("\n")}`;
+}
+
 /** Read and validate `factory/board.json` through the production parser. */
 export async function readBoard(cwd: string): Promise<Board> {
   return parseBoard(JSON.parse(await fs.readFile(boardPath(cwd), "utf8")));
