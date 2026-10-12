@@ -1,0 +1,55 @@
+{
+  "name": "@arest/pi-agent-fabric-factory",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Reusable Pi package that turns a feature request into a reviewed pull request with human merge authority preserved.",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/arest/pi-agent-fabric.git"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "test": "node --test \"tests/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm test"
+  },
+  "files": [
+    "extensions",
+    "skills",
+    "src",
+    "README.md"
+  ],
+  "keywords": [
+    "pi-package",
+    "pi",
+    "pi-coding-agent",
+    "agent-fabric",
+    "factory",
+    "workflow"
+  ],
+  "pi": {
+    "extensions": [
+      "./extensions/factory.ts"
+    ],
+    "skills": [
+      "./skills"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-coding-agent": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "^1.1.0",
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.3"
+  }
+}
