@@ -89,8 +89,25 @@ export function jobRoundReviewPlan(paths: FactoryPaths, jobId: string, round: nu
   return path.join(jobReviewDir(paths, jobId, round), "review-plan.json");
 }
 
+/**
+ * `factory/.recovery.lock` — serializes `/factory recover` runs so two
+ * concurrent recoveries cannot reconcile the same board at the same time.
+ */
+export function factoryRecoveryLock(paths: FactoryPaths): string {
+  return path.join(paths.factoryDir, ".recovery.lock");
+}
+
 export function jobReviewLock(paths: FactoryPaths, jobId: string): string {
   return path.join(jobDir(paths, jobId), ".review.lock");
+}
+
+/**
+ * `factory/jobs/<job-id>/.branch.lock` — serializes every mutation of a job's
+ * shared branch: worktree/branch creation in the build stage and the branch
+ * push during publication.
+ */
+export function jobBranchLock(paths: FactoryPaths, jobId: string): string {
+  return path.join(jobDir(paths, jobId), ".branch.lock");
 }
 
 export function jobApprovalLock(paths: FactoryPaths, jobId: string): string {
@@ -107,4 +124,13 @@ export function jobPublicationLock(paths: FactoryPaths, jobId: string): string {
  */
 export function jobPromotionLock(paths: FactoryPaths, jobId: string): string {
   return path.join(jobDir(paths, jobId), ".promotion.lock");
+}
+
+/**
+ * `factory/.promotion-<target>.lock` — serializes promotion PR preparation per
+ * protected target branch, so two jobs cannot mutate the same target branch
+ * concurrently.
+ */
+export function promotionTargetLock(paths: FactoryPaths, target: string): string {
+  return path.join(paths.factoryDir, `.promotion-${target}.lock`);
 }

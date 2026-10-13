@@ -12,8 +12,11 @@
  *   and only then does the job advance to `build`.
  * - `/factory approve|rework|retry|promote|cancel <job-id>` runs a guarded
  *   operator transition that preserves history and never deletes work.
+ * - `/factory recover` reconciles every job against its durable evidence
+ *   (artifacts, Git, GitHub) after a restart and resumes from the last safe
+ *   durable stage; disagreements escalate to a human.
  *
- * Later tickets add crash recovery and the read-only dashboard.
+ * Later tickets add the read-only dashboard.
  */
 
 import path from "node:path";
@@ -21,6 +24,7 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-c
 import { SpecContractError } from "../src/artifacts/spec.ts";
 import type { Job } from "../src/state/board.ts";
 import { isJobId } from "../src/state/job-id.ts";
+import { LockTimeoutError } from "../src/state/lock.ts";
 import { CommandNotEligibleError, JobNotFoundError, OperatorRequestError } from "../src/workflow/errors.ts";
 import {
   approveJob,
@@ -34,6 +38,7 @@ import {
 } from "../src/workflow/operator-commands.ts";
 import { isPromotionTarget, type PromotionTarget } from "../src/workflow/promotion/gh-adapter.ts";
 import { runSpecStage } from "../src/workflow/spec-stage.ts";
+import { runRecoveryStage } from "../src/workflow/recovery.ts";
 import { InvalidFeatureError, startJob } from "../src/workflow/start-job.ts";
 
 const USAGE = "Usage: /factory <feature request>";
@@ -46,6 +51,8 @@ const OPERATOR_USAGE: Record<OperatorCommand, string> = {
   promote: "Usage: /factory promote <job-id> [main|master]",
   cancel: "Usage: /factory cancel <job-id> [note]",
 };
+
+const RECOVER_USAGE = "Usage: /factory recover";
 
 /** Operator commands that take only a job id and an optional note. */
 type SimpleOperatorCommand = Exclude<OperatorCommand, "promote">;
@@ -158,6 +165,40 @@ async function runOperatorCommand(command: OperatorCommand, args: string[], ctx:
   }
 }
 
+/** Reconcile every job with its durable evidence and report what changed. */
+async function runRecoverCommand(args: string[], ctx: ExtensionCommandContext): Promise<void> {
+  if (args.length > 0) {
+    ctx.ui.notify(RECOVER_USAGE, "warning");
+    return;
+  }
+
+  try {
+    const { outcomes } = await runRecoveryStage({ cwd: ctx.cwd });
+    const reconciled = outcomes.filter((outcome) => outcome.action !== "unchanged");
+    if (reconciled.length === 0) {
+      ctx.ui.notify(
+        `Factory recovery complete: ${outcomes.length} job(s) checked; every job matches its durable evidence.`,
+        "info",
+      );
+      return;
+    }
+    const lines = reconciled.map((outcome) => `- ${outcome.jobId}: ${outcome.reason} (now ${outcome.stage}/${outcome.status})`);
+    ctx.ui.notify(
+      `Factory recovery complete: ${outcomes.length} job(s) checked, ${reconciled.length} reconciled:\n${lines.join("\n")}`,
+      "info",
+    );
+  } catch (error) {
+    if (error instanceof LockTimeoutError) {
+      ctx.ui.notify(
+        "Factory recovery could not acquire the recovery lock; another recovery is running. Run /factory recover again once it finishes.",
+        "warning",
+      );
+      return;
+    }
+    ctx.ui.notify(`Factory recovery failed: ${describeError(error)}`, "error");
+  }
+}
+
 export default function factoryExtension(pi: ExtensionAPI): void {
   pi.registerCommand("factory", {
     description: "Start a factory job from a feature request, or advance its spec stage",
@@ -191,6 +232,11 @@ export default function factoryExtension(pi: ExtensionAPI): void {
         }
       }
 
+      if (subcommand === "recover") {
+        await runRecoverCommand(rest, ctx);
+        return;
+      }
+
       if (isOperatorCommand(subcommand)) {
         await runOperatorCommand(subcommand, rest, ctx);
         return;
@@ -198,7 +244,7 @@ export default function factoryExtension(pi: ExtensionAPI): void {
 
       if (RESERVED_SUBCOMMANDS.has(subcommand)) {
         ctx.ui.notify(
-          `/factory ${verb} is not available yet; only /factory <feature request>, /factory spec <job-id>, and the operator commands (approve, rework, retry, promote, cancel) are implemented.`,
+          `/factory ${verb} is not available yet; only /factory <feature request>, /factory spec <job-id>, /factory recover, and the operator commands (approve, rework, retry, promote, cancel) are implemented.`,
           "warning",
         );
         return;

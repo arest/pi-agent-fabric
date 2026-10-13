@@ -1,5 +1,5 @@
 import fs from "node:fs/promises";
-import { assertReviewComplete, isBlockingReport, type ParsedReview, type ReviewSeverity, type ReviewVerdict } from "../artifacts/review.ts";
+import { assertReviewComplete, isBlockingReport, reviewVerdictKey, type ParsedReview, type ReviewSeverity, type ReviewVerdict } from "../artifacts/review.ts";
 import { writeFileAtomic } from "../state/atomic-write.ts";
 import type { Board, Job, ReviewPlan } from "../state/board.ts";
 import { BoardStore } from "../state/board-store.ts";
@@ -111,7 +111,7 @@ export async function runReviewStage(input: RunReviewStageInput): Promise<Review
       const current = draft.jobs.find((candidate) => candidate.id === job.id);
       if (!current) throw new JobNotFoundError(job.id);
       assertReviewStage(current);
-      for (const [role, report] of Object.entries(reports)) current.verdicts[`${role}:round-${current.round}`] = report.verdict;
+      for (const [role, report] of Object.entries(reports)) current.verdicts[reviewVerdictKey(role, current.round)] = report.verdict;
       const exhausts = blocking && current.round >= policy.limits.max_review_rounds;
       const eventName = blocking ? (exhausts ? "review_exhausted" : "review_rework") : "review_complete";
       // A blocking round is closed either into rework or into human escalation.

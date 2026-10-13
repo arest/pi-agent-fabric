@@ -102,3 +102,8 @@ export class ReworkContextError extends Error {
     this.reason = reason;
   }
 }
+
+/** Render any thrown value as a short, non-leaking cause for a caller message. */
+export function describeCause(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}

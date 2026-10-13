@@ -58,6 +58,25 @@ export function isBlockingReport(report: Pick<ParsedReview, "verdict" | "severit
   return report.verdict === "CHANGES" && report.severity === "BLOCKING";
 }
 
+/**
+ * Board key under which a reviewer's verdict for one round is recorded. The
+ * suffix shape is shared by the writer (review stage) and the readers
+ * (recovery), so the two can never drift apart.
+ */
+export function reviewVerdictKey(role: string, round: number): string {
+  return `${role}:round-${round}`;
+}
+
+/** The roles that have a recorded verdict for a given round. */
+export function rolesWithVerdicts(verdicts: Record<string, string>, round: number): Set<string> {
+  const suffix = `:round-${round}`;
+  const roles = new Set<string>();
+  for (const key of Object.keys(verdicts)) {
+    if (key.endsWith(suffix)) roles.add(key.slice(0, key.length - suffix.length));
+  }
+  return roles;
+}
+
 export function renderReviewTemplate(role: string): string {
   return [
     `# ${role} review`,

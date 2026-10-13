@@ -10,7 +10,7 @@ import {
   jobRoundReviewPlan,
   type FactoryPaths,
 } from "../state/paths.ts";
-import { ReworkContextError } from "./errors.ts";
+import { ReworkContextError, describeCause } from "./errors.ts";
 
 /** A validated report retained from a round that has already closed. */
 export interface PriorRoundReport {
@@ -89,7 +89,7 @@ export async function readReworkContext(paths: FactoryPaths, jobId: string, roun
     try {
       plan = parseRetainedPlan(JSON.parse(await fs.readFile(planFile, "utf8")));
     } catch (error) {
-      throw new ReworkContextError(jobId, round, `round ${priorRound} has no readable review plan at ${planFile} (${describe(error)})`);
+      throw new ReworkContextError(jobId, round, `round ${priorRound} has no readable review plan at ${planFile} (${describeCause(error)})`);
     }
 
     for (const role of plan.selected) {
@@ -98,7 +98,7 @@ export async function readReworkContext(paths: FactoryPaths, jobId: string, roun
       try {
         parsed = assertReviewComplete(await fs.readFile(file, "utf8"), file);
       } catch (error) {
-        throw new ReworkContextError(jobId, round, `round ${priorRound} report for ${role} is missing or invalid at ${file} (${describe(error)})`);
+        throw new ReworkContextError(jobId, round, `round ${priorRound} report for ${role} is missing or invalid at ${file} (${describeCause(error)})`);
       }
       priorReports.push({ role, round: priorRound, verdict: parsed.verdict, severity: parsed.severity, file });
     }
@@ -122,8 +122,4 @@ async function readHumanNotes(paths: FactoryPaths, jobId: string, round: number)
     .filter((event) => event.event === "human_rework" && typeof event.note === "string" && event.note.length > 0)
     .filter((event) => event.round === undefined || event.round < round)
     .map((event) => event.note as string);
-}
-
-function describe(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

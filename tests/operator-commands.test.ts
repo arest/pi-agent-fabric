@@ -17,42 +17,14 @@ import { runReviewStage, type Reviewer } from "../src/workflow/review-stage.ts";
 import type { PromotionAdapter } from "../src/workflow/promotion/gh-adapter.ts";
 import { runSpecStage } from "../src/workflow/spec-stage.ts";
 import { startJob } from "../src/workflow/start-job.ts";
-import { completeSpecMarkdown, makeTempRepo, readBoard, readJobEvents, removeTempRepo, boardPath } from "./helpers/harness.ts";
+import { completeSpecMarkdown, makeTempRepo, readBoard, readJobEvents, removeTempRepo, boardPath, stubWorktreeProvider as provider, evidenceBuilder as builder, passReviewer, blockingReviewer, approveDecision, escalateDecision, configureFactory } from "./helpers/harness.ts";
 import { createHarness } from "./helpers/harness.ts";
 
 const NOW = (): Date => new Date("2026-02-03T04:05:06.000Z");
-const provider = (cwd: string): WorktreeProvider => ({
-  prepare: async () => ({ path: cwd, lockPath: path.join(cwd, "builder.lock") }),
-});
-const builder: Builder = async ({ buildFile }) =>
-  fs.writeFile(buildFile, "## Changed files\n\n- src/example.ts\n\n## Validation\n\n- PASS\n\n## Remaining risks\n\nNone\n");
-const passReviewer: Reviewer = async ({ reportFile, role }) =>
-  fs.writeFile(
-    reportFile,
-    `# ${role}\n\nVERDICT: PASS\nSEVERITY: NON-BLOCKING\n\n## Summary\n\nLooks good.\n\n## Findings\n\nNone.\n\n## Evidence\n\nInspected diff.\n\n## Recommendations\n\nNone.\n`,
-  );
-const blockingReviewer: Reviewer = async ({ reportFile, role }) =>
-  fs.writeFile(
-    reportFile,
-    `# ${role}\n\nVERDICT: CHANGES\nSEVERITY: BLOCKING\n\n## Summary\n\nFix it.\n\n## Findings\n\nBug.\n\n## Evidence\n\nDiff.\n\n## Recommendations\n\nFix.\n`,
-  );
-
-const approveDecision =
-  "DECISION: APPROVE\n\n## Spec checks\n\nAcceptance criteria are covered by tests.\n\n## Implementation evidence\n\nDiff and build evidence are in scope.\n\n## Policy context\n\nTarget remains develop with human merge required.\n";
-const escalateDecision =
-  "DECISION: ESCALATE\n\n## Spec checks\n\nScope and acceptance criteria conflict.\n\n## Implementation evidence\n\nDiff does not prove safe rollout.\n\n## Policy context\n\nRisk requires human decision.\n";
-
-async function configure(cwd: string, overrides: Record<string, unknown> = {}): Promise<void> {
-  await fs.mkdir(path.join(cwd, ".pi"), { recursive: true });
-  await fs.writeFile(
-    path.join(cwd, ".pi", "factory.json"),
-    JSON.stringify({ schema_version: 1, reviewers: { available: ["code"], required: ["code"] }, ...overrides }),
-  );
-}
 
 /** Drive a job to the review stage with a completed build. */
 async function seedReviewable(cwd: string): Promise<string> {
-  await configure(cwd);
+  await configureFactory(cwd);
   const { job } = await startJob({ cwd, feature: "Operator commands", now: NOW });
   await runSpecStage({ cwd, jobId: job.id, writer: async ({ specFile }) => fs.writeFile(specFile, completeSpecMarkdown()), now: NOW });
   await runBuildStage({
@@ -77,7 +49,7 @@ async function seedApprovalEscalation(cwd: string): Promise<string> {
 
 /** Drive a job to a review-exhaustion human escalation. */
 async function seedReviewExhaustion(cwd: string): Promise<string> {
-  await configure(cwd, { limits: { max_review_rounds: 1 } });
+  await configureFactory(cwd, { limits: { max_review_rounds: 1 } });
   const { job } = await startJob({ cwd, feature: "Review exhaustion", now: NOW });
   await runSpecStage({ cwd, jobId: job.id, writer: async ({ specFile }) => fs.writeFile(specFile, completeSpecMarkdown()), now: NOW });
   await runBuildStage({
@@ -112,7 +84,7 @@ async function seedPublished(cwd: string): Promise<string> {
 
 /** Drive a job into the recoverable `blocked` build state. */
 async function seedBlocked(cwd: string): Promise<string> {
-  await configure(cwd);
+  await configureFactory(cwd);
   const { job } = await startJob({ cwd, feature: "Blocked build", now: NOW });
   await runSpecStage({ cwd, jobId: job.id, writer: async ({ specFile }) => fs.writeFile(specFile, completeSpecMarkdown()), now: NOW });
   await assert.rejects(

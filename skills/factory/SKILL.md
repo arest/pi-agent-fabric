@@ -33,6 +33,7 @@ PR waiting for human merge
 /factory retry <job-id> [note]         clear a recoverable blocked condition (implemented)
 /factory promote <job-id> [main|master] prepare a human-merged promotion PR (implemented)
 /factory cancel <job-id> [note]        cancel a non-terminal job, preserving history (implemented)
+/factory recover                       reconcile jobs with artifacts, Git, and GitHub evidence (implemented)
 ```
 
 `/factory next` is reserved for a later ticket. Do not invent behavior for

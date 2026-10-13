@@ -26,8 +26,11 @@ GitHub preflight (auth, repository identity, PR capability, and checks-read
 capability), opens or monitors a PR to `develop`, and moves approved jobs to
 `waiting_for_human` with no auto-merge. Operator commands provide guarded
 `approve`, `rework`, `retry`, `promote`, and `cancel` transitions that preserve
-history and never delete work or merge.
-Later tickets add crash recovery and the read-only dashboard.
+history and never delete work or merge. `/factory recover` reconciles every
+job against its durable evidence — job artifacts, Git, and GitHub — and resumes
+jobs from the last safe durable stage after a restart, escalating to a human
+when sources disagree.
+Later tickets add the read-only dashboard.
 
 ```text
 /factory <feature>                       start a job scaffold            (implemented)
@@ -37,6 +40,7 @@ Later tickets add crash recovery and the read-only dashboard.
 /factory retry <job-id> [note]           clear a recoverable failure     (implemented)
 /factory promote <job-id> [main|master]  prepare a promotion PR          (implemented)
 /factory cancel <job-id> [note]          cancel, preserving all history  (implemented)
+/factory recover                         reconcile jobs with durable evidence (implemented)
 ```
 
 An operator command that is not eligible for the job's current state fails with

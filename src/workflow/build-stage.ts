@@ -7,7 +7,7 @@ import type { Board, Job } from "../state/board.ts";
 import { BoardStore } from "../state/board-store.ts";
 import { appendJobEvent, readJobEvents } from "../state/job-events.ts";
 import { acquireLock, LockTimeoutError, type LockHandle, type LockOptions } from "../state/lock.ts";
-import { factoryPaths, jobBuildFile, jobSpecFile, jobWorktree } from "../state/paths.ts";
+import { factoryPaths, jobBranchLock, jobBuildFile, jobSpecFile, jobWorktree } from "../state/paths.ts";
 import { InvalidJobStateError, JobNotFoundError, ReworkContextError, SpecNotFoundError } from "./errors.ts";
 import { readReworkContext, type ReworkContext } from "./rounds.ts";
 import { loadPolicy, type FactoryPolicy } from "../config/policy.ts";
@@ -99,7 +99,20 @@ export async function runBuildStage(input: RunBuildStageInput): Promise<RunBuild
   }
 
   const policy = await loadPolicy(input.cwd);
-  const prepared = await (input.worktree ?? gitWorktreeProvider).prepare({ cwd: input.cwd, job });
+  // Branch/worktree creation mutates the job's shared branch. Serializing only
+  // the preparation means two concurrent builders of the same job cannot race
+  // `git worktree add -b`: the second waits, and a timeout is reported as the
+  // same recoverable contention as the builder lock (the job is left
+  // untouched, so the live owner is never blocked by a mere reporter). The
+  // whole build itself is serialized by the worktree-level builder lock.
+  const branchLock = await acquireLock(jobBranchLock(paths, job.id), input.lockOptions);
+  let prepared: { path: string; lockPath: string };
+  try {
+    prepared = await (input.worktree ?? gitWorktreeProvider).prepare({ cwd: input.cwd, job });
+  } finally {
+    await branchLock.release();
+  }
+
   let lock: LockHandle | undefined;
   try {
     lock = await acquireLock(prepared.lockPath, input.lockOptions);

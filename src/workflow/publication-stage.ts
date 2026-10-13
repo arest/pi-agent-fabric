@@ -3,7 +3,7 @@ import type { Board, Job, PullRequest } from "../state/board.ts";
 import { BoardStore } from "../state/board-store.ts";
 import { appendJobEvent } from "../state/job-events.ts";
 import { acquireLock, type LockOptions } from "../state/lock.ts";
-import { factoryPaths, jobPublicationLock } from "../state/paths.ts";
+import { factoryPaths, jobBranchLock, jobPublicationLock } from "../state/paths.ts";
 import { InvalidJobStateError, JobNotFoundError } from "./errors.ts";
 import { createGhPublicationAdapter, type PublicationAdapter } from "./publication/gh-adapter.ts";
 
@@ -49,7 +49,16 @@ export async function runPublicationStage(input: RunPublicationStageInput): Prom
 
     const adapter = input.adapter ?? createGhPublicationAdapter();
     await adapter.preflight({ cwd: paths.root, job, policy });
-    const pullRequest = await adapter.ensurePullRequest({ cwd: paths.root, job, policy });
+    // Pushing the job branch mutates a shared branch. The per-job branch lock
+    // serializes it against branch/worktree creation in the build stage, so a
+    // push never races a concurrently resumed builder on the same job.
+    const branchLock = await acquireLock(jobBranchLock(paths, job.id), input.lockOptions);
+    let pullRequest: PullRequest;
+    try {
+      pullRequest = await adapter.ensurePullRequest({ cwd: paths.root, job, policy });
+    } finally {
+      await branchLock.release();
+    }
 
     const at = (input.now ?? (() => new Date()))().toISOString();
     const { board: nextBoard, result } = await store.mutate(async (draft) => {

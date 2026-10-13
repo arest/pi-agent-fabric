@@ -7,6 +7,8 @@ import type {
   RegisteredCommand,
 } from "@earendil-works/pi-coding-agent";
 import factoryExtension from "../../extensions/factory.ts";
+import type { Builder, WorktreeProvider } from "../../src/workflow/build-stage.ts";
+import type { Reviewer } from "../../src/workflow/review-stage.ts";
 import { parseBoard, type Board } from "../../src/state/board.ts";
 
 export interface CapturedNotification {
@@ -67,6 +69,53 @@ export async function makeTempRepo(): Promise<string> {
 
 export async function removeTempRepo(dir: string): Promise<void> {
   await fs.rm(dir, { recursive: true, force: true });
+}
+
+/**
+ * Shared stage-role stubs and seeds for workflow tests.
+ *
+ * A stub role writes only its own artifact, exactly as the real roles must;
+ * the fixtures below satisfy the artifact contracts so a stage run advances.
+ */
+
+/** Worktree provider that puts the "worktree" at the repo root itself. */
+export const stubWorktreeProvider = (cwd: string): WorktreeProvider => ({
+  prepare: async () => ({ path: cwd, lockPath: path.join(cwd, "builder.lock") }),
+});
+
+/** A builder that writes complete build evidence. */
+export const evidenceBuilder: Builder = async ({ buildFile }) =>
+  fs.writeFile(buildFile, "## Changed files\n\n- src/example.ts\n\n## Validation\n\n- PASS\n\n## Remaining risks\n\nNone\n");
+
+/** A reviewer that writes a complete PASS report. */
+export const passReviewer: Reviewer = async ({ reportFile, role }) =>
+  fs.writeFile(
+    reportFile,
+    `# ${role}\n\nVERDICT: PASS\nSEVERITY: NON-BLOCKING\n\n## Summary\n\nLooks good.\n\n## Findings\n\nNone.\n\n## Evidence\n\nInspected diff.\n\n## Recommendations\n\nNone.\n`,
+  );
+
+/** A reviewer that writes a complete blocking CHANGES report. */
+export const blockingReviewer: Reviewer = async ({ reportFile, role }) =>
+  fs.writeFile(
+    reportFile,
+    `# ${role}\n\nVERDICT: CHANGES\nSEVERITY: BLOCKING\n\n## Summary\n\nFix it.\n\n## Findings\n\nBug.\n\n## Evidence\n\nDiff.\n\n## Recommendations\n\nFix.\n`,
+  );
+
+/** An approver decision artifact with a complete APPROVE decision. */
+export const approveDecision =
+  "DECISION: APPROVE\n\n## Spec checks\n\nAcceptance criteria are covered by tests.\n\n## Implementation evidence\n\nDiff and build evidence are in scope.\n\n## Policy context\n\nTarget remains develop with human merge required.\n";
+
+/** An approver decision artifact with a complete ESCALATE decision. */
+export const escalateDecision =
+  "DECISION: ESCALATE\n\n## Spec checks\n\nScope and acceptance criteria conflict.\n\n## Implementation evidence\n\nDiff does not prove safe rollout.\n\n## Policy context\n\nRisk requires human decision.\n";
+
+/** Write a factory policy selecting only the stub reviewer roles. */
+export async function configureFactory(cwd: string, overrides: Record<string, unknown> = {}): Promise<void> {
+  await fs.mkdir(path.join(cwd, ".pi"), { recursive: true });
+  await fs.writeFile(
+    path.join(cwd, ".pi", "factory.json"),
+    JSON.stringify({ schema_version: 1, reviewers: { available: ["code"], required: ["code"] }, ...overrides }),
+  );
 }
 
 export function boardPath(cwd: string): string {

@@ -14,8 +14,8 @@ import { loadPolicy } from "../config/policy.ts";
 import type { Board, HistoryEntry, Job, PullRequest } from "../state/board.ts";
 import { BoardStore } from "../state/board-store.ts";
 import { appendJobEvent } from "../state/job-events.ts";
-import { acquireLock, type LockOptions } from "../state/lock.ts";
-import { factoryPaths, jobPromotionLock } from "../state/paths.ts";
+import { acquireLock, type LockHandle, type LockOptions } from "../state/lock.ts";
+import { factoryPaths, jobPromotionLock, promotionTargetLock } from "../state/paths.ts";
 import { CommandNotEligibleError, JobNotFoundError, OperatorRequestError } from "./errors.ts";
 import {
   createGhPromotionAdapter,
@@ -196,7 +196,14 @@ export async function promoteJob(input: PromoteInput): Promise<PromoteResult> {
   assertPromotable(findJob(initial, input.jobId));
 
   const lock = await acquireLock(jobPromotionLock(paths, input.jobId), input.lockOptions);
+  // Promotion writes to a protected target branch shared by every job. The
+  // per-target lock (taken after the per-job lock, always in that order) keeps
+  // two jobs from preparing promotions to the same branch concurrently. It is
+  // acquired inside the per-job lock's try so a contended target lock can
+  // never leak the per-job lock the caller already holds.
+  let targetLock: LockHandle | undefined;
   try {
+    targetLock = await acquireLock(promotionTargetLock(paths, target), input.lockOptions);
     const board = await store.read();
     const job = findJob(board, input.jobId);
     assertPromotable(job);
@@ -233,6 +240,7 @@ export async function promoteJob(input: PromoteInput): Promise<PromoteResult> {
 
     return { job: result, board: nextBoard, promotion };
   } finally {
+    await targetLock?.release();
     await lock.release();
   }
 }

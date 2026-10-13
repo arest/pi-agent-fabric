@@ -107,6 +107,7 @@ the feature text and contains only `[a-z0-9-]`.
 | `/factory retry <job-id>` | any stage / `blocked` | same stage / `active` |
 | `/factory cancel <job-id>` | any non-terminal state | same stage / `cancelled` |
 | `/factory promote <job-id> [main or master]` | `waiting_for_human` / `needs-human` with a PR | same state, promotion PR recorded |
+| `/factory recover` | any job whose durable evidence disagrees with the board | the last safe durable stage (event `recovered`) |
 
 Invalid transitions are rejected without mutating state: an operator command
 that is not eligible throws `CommandNotEligibleError` and the board is left
@@ -142,3 +143,55 @@ build runs in round + 1.
 `policy.limits.max_review_rounds` bounds the **total number of review rounds**,
 not the number of reworks. A blocking finding in the last permitted round has no
 next round to open, so it escalates to `needs-human` instead.
+
+## Restart recovery
+
+`/factory recover` reconciles every job against its durable evidence: the job
+artifacts on disk, Git, and GitHub. It runs under a recovery lock, records one
+`recovered` history/event entry per changed job, and never deletes anything.
+
+- **Resume from the last safe durable stage.** A stage whose required evidence
+  is complete is safe; a stage whose evidence is gone resumes at the last stage
+  that is still supported. Missing `spec.md` resumes at `spec`; missing
+  `build.md` resumes at `build`; a missing current-round report resumes at
+  `review` — but only when no verdict was recorded for it. A verdict recorded
+  for a report that cannot be read is a disagreement and escalates to
+  `needs-human` instead.
+- **Disagreement escalates.** When the board and the evidence contradict each
+  other (a verdict without a readable report, an approval without
+  `decision.md`, a missing branch, a recorded PR that GitHub does not know),
+  recovery sets `needs-human` instead of guessing. The durable decision
+  artifact always wins: a `decision.md` recording `APPROVE` restores a lost
+  board approval, and one recording `ESCALATE` returns the job to the approver
+  gate even if the board claims approval.
+- **GitHub is the merge authority.** A `waiting_for_human` job whose recorded
+  PR is merged on GitHub becomes `merged`; anything else that disagrees
+  (missing, closed, or not found) stays or becomes `needs-human`. Check-run
+  results are deliberately not consulted: the factory never auto-merges, so
+  checks cannot change any automatable transition — they are part of the
+  human merge decision.
+- **Deliberate states are untouched.** Terminal (`merged`, `cancelled`),
+  `blocked`, and `failed` jobs — and `needs-human` jobs below the publication
+  gate — were written by a guarded transition or a recorded factory stop; only
+  an operator command changes them. At the publication gate, GitHub evidence
+  may still complete a `needs-human` job whose PR was merged.
+- **Recovery starts no work.** A restart cannot duplicate job starts because
+  recovery only reconciles recorded state: it allocates no job ids, launches
+  no roles, and re-runs no stages. Duplicate job ids on a hand-edited board
+  fail closed in the board parser.
+- **No-op recoveries write nothing.** When every job already matches its
+  evidence, the board is not rewritten and no events are appended.
+
+## Concurrency
+
+- Board writes run under a cross-process board lock, are guarded by the
+  monotonic `version` counter, and are swapped in atomically. A writer that
+  analyzed state which changed underneath it fails closed with
+  `StaleBoardError` instead of recording stale results.
+- Each job's branch is a shared resource: worktree/branch creation in the
+  build stage and the publication push both run under the job's
+  `.branch.lock`. Contention there is reported (`LockTimeoutError`) and leaves
+  the job untouched, so a live owner is never blocked by a reporter.
+- Promotion runs under both the job's `.promotion.lock` and a per-target
+  `.promotion-<target>.lock` (always acquired in that order), so two jobs
+  cannot prepare promotions to the same protected branch concurrently.
