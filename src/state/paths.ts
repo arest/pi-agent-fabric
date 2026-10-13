@@ -55,3 +55,19 @@ export function jobBuildFile(paths: FactoryPaths, jobId: string): string {
 export function jobWorktree(paths: FactoryPaths, jobId: string): string {
   return path.join(paths.worktreesDir, jobId);
 }
+
+export function jobReviewPlan(paths: FactoryPaths, jobId: string): string {
+  return path.join(jobDir(paths, jobId), "review-plan.json");
+}
+
+export function jobReviewDir(paths: FactoryPaths, jobId: string, round: number): string {
+  return path.join(jobDir(paths, jobId), `round-${round}`);
+}
+
+export function jobReviewReport(paths: FactoryPaths, jobId: string, round: number, role: string): string {
+  return path.join(jobReviewDir(paths, jobId, round), `review-${role}.md`);
+}
+
+export function jobReviewLock(paths: FactoryPaths, jobId: string): string {
+  return path.join(jobDir(paths, jobId), ".review.lock");
+}

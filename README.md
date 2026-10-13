@@ -11,11 +11,14 @@ The package ships:
 
 ## Status
 
-Bootstrap, spec, and builder slices are implemented. `/factory <feature>`
-validates repository policy and creates a new job scaffold, `/factory spec
-<job-id>` runs the spec-writer stage, and the builder workflow runs in an
-isolated job worktree while capturing validated `build.md` evidence. Later
-tickets add reviewers, approver, GitHub publication, operator commands, crash
+Bootstrap, spec, builder, and reviewer slices are implemented. `/factory
+<feature>` validates repository policy and creates a new job scaffold,
+`/factory spec <job-id>` runs the spec-writer stage, and the builder workflow
+runs in an isolated job worktree while capturing validated `build.md` evidence.
+The review workflow selects configured read-only reviewers, persists skipped
+roles and reasons, validates every report, waits for all selected reports, and
+routes blocking findings into numbered rework rounds or human escalation.
+Later tickets add the approver, GitHub publication, operator commands, crash
 recovery, and the read-only dashboard.
 
 ```text
@@ -108,3 +111,15 @@ validation commands run in the prepared worktree and their PASS/FAIL outcomes
 are persisted in the validation section. Any failed validation, builder error,
 or incomplete evidence blocks the job at `build` rather than advancing it to
 review.
+
+## Review stage
+
+`runReviewStage` is the orchestration seam for configured reviewer roles. It
+persists `review_plan` on the board and in
+`factory/jobs/<job-id>/review-plan.json` before launching reviewers, then stores
+each report at `factory/jobs/<job-id>/round-<n>/review-<role>.md`. Reports must begin
+with `VERDICT` and `SEVERITY` and contain Summary, Findings, Evidence, and
+Recommendations sections. Missing or malformed reports fail closed. Once every
+selected report passes validation, non-blocking findings advance the job to
+`approval`; blocking findings start the next numbered build round, or move the
+job to `needs-human` when the configured round limit is exhausted.
