@@ -11,16 +11,19 @@ The package ships:
 
 ## Status
 
-Bootstrap, spec, builder, and reviewer slices are implemented. `/factory
-<feature>` validates repository policy and creates a new job scaffold,
-`/factory spec <job-id>` runs the spec-writer stage, and the builder workflow
-runs in an isolated job worktree while capturing validated `build.md` evidence.
-The review workflow selects configured read-only reviewers, persists skipped
-roles and reasons, validates every report, waits for all selected reports, and
-routes blocking findings into numbered rework rounds that retain prior evidence
-or into human escalation when the round limit is exhausted.
-Later tickets add the approver, GitHub publication, operator commands, crash
-recovery, and the read-only dashboard.
+Bootstrap, spec, builder, reviewer, and approver slices are implemented.
+`/factory <feature>` validates repository policy and creates a new job
+scaffold, `/factory spec <job-id>` runs the spec-writer stage, and the builder
+workflow runs in an isolated job worktree while capturing validated `build.md`
+evidence. The review workflow selects configured read-only reviewers, persists
+skipped roles and reasons, validates every report, waits for all selected
+reports, and routes blocking findings into numbered rework rounds that retain
+prior evidence or into human escalation when the round limit is exhausted.
+The approval workflow runs an independent decision gate over spec,
+implementation evidence, and policy context, then persists `APPROVE` or
+`ESCALATE` as a distinct durable decision.
+Later tickets add GitHub publication, operator commands, crash recovery, and
+the read-only dashboard.
 
 ```text
 /factory <feature>      start a job scaffold           (implemented)
@@ -135,3 +138,19 @@ round on each entry, so `build_complete` and `review_started` appear once per
 round instead of collapsing into a single durable event. If a retained report is
 missing or malformed when a rework round opens, the factory fails closed to
 `needs-human` rather than resuming the builder on incomplete findings.
+
+## Approval stage
+
+`runApprovalStage` is the orchestration seam for the approver role. The
+approver writes `factory/jobs/<job-id>/decision.md`, which must declare
+`DECISION: APPROVE|ESCALATE` and include independent-check sections for Spec
+checks, Implementation evidence, and Policy context. The extension validates the
+decision contract before mutating board state:
+
+- `APPROVE` advances `approval -> publication` and persists
+  `job.approval = "APPROVE"`.
+- `ESCALATE` keeps stage `approval`, marks status `needs-human`, and persists
+  `job.approval = "ESCALATE"`.
+
+This decision is stored separately from reviewer verdicts (`job.verdicts`) so
+approval remains a distinct durable gate.

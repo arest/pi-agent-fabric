@@ -52,6 +52,11 @@ export function jobBuildFile(paths: FactoryPaths, jobId: string): string {
   return path.join(jobDir(paths, jobId), "build.md");
 }
 
+/** `factory/jobs/<job-id>/decision.md` — the approver's durable decision artifact. */
+export function jobDecisionFile(paths: FactoryPaths, jobId: string): string {
+  return path.join(jobDir(paths, jobId), "decision.md");
+}
+
 export function jobWorktree(paths: FactoryPaths, jobId: string): string {
   return path.join(paths.worktreesDir, jobId);
 }
@@ -86,4 +91,8 @@ export function jobRoundReviewPlan(paths: FactoryPaths, jobId: string, round: nu
 
 export function jobReviewLock(paths: FactoryPaths, jobId: string): string {
   return path.join(jobDir(paths, jobId), ".review.lock");
+}
+
+export function jobApprovalLock(paths: FactoryPaths, jobId: string): string {
+  return path.join(jobDir(paths, jobId), ".approval.lock");
 }

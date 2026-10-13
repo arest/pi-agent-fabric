@@ -79,6 +79,8 @@ export interface JobPolicySnapshot {
   target: string;
 }
 
+export type ApprovalDecision = "APPROVE" | "ESCALATE";
+
 export interface Job {
   id: string;
   feature: string;
@@ -91,6 +93,7 @@ export interface Job {
   round: number;
   review_plan: ReviewPlan | null;
   verdicts: Record<string, string>;
+  approval: ApprovalDecision | null;
   pull_request: PullRequest | null;
   created_at: string;
   updated_at: string;
@@ -181,6 +184,14 @@ function parsePolicySnapshot(value: unknown, jobId: string): JobPolicySnapshot |
   return { v: 1, source: value.source, mode: "develop", target: value.target };
 }
 
+function parseApproval(value: unknown, jobId: string): ApprovalDecision | null {
+  if (value === null || value === undefined) return null;
+  if (value !== "APPROVE" && value !== "ESCALATE") {
+    throw new BoardIntegrityError(`job ${jobId} has an invalid approval decision`);
+  }
+  return value;
+}
+
 function parsePullRequest(value: unknown, jobId: string): PullRequest | null {
   if (value === null || value === undefined) return null;
   if (!isRecord(value)) {
@@ -239,6 +250,7 @@ function parseJob(value: unknown, index: number): Job {
     round,
     review_plan: parseReviewPlan(value.review_plan, id),
     verdicts,
+    approval: parseApproval(value.approval, id),
     pull_request: parsePullRequest(value.pull_request, id),
     created_at: createdAt,
     updated_at: updatedAt,

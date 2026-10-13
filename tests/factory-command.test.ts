@@ -149,9 +149,10 @@ test("starting a job seeds a durable board entry and job scaffold", async (t) =>
     round: 1,
   });
 
-  // No reviewer selection, verdict, or publication flow exists yet.
+  // No reviewer selection, verdict, approval, or publication flow exists yet.
   assert.equal(job.review_plan, null);
   assert.deepEqual(job.verdicts, {});
+  assert.equal(job.approval, null);
   assert.equal(job.pull_request, null);
 
   const events = await readJobEvents(cwd, job.id);

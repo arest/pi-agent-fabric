@@ -238,6 +238,7 @@ function makeJob(id: string) {
     round: 1,
     review_plan: null,
     verdicts: {},
+    approval: null,
     pull_request: null,
     created_at: at,
     updated_at: at,

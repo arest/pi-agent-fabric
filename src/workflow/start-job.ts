@@ -85,6 +85,7 @@ export async function startJob(input: StartJobInput): Promise<StartJobResult> {
         round: 1,
         review_plan: null,
         verdicts: {},
+        approval: null,
         pull_request: null,
         created_at: timestamp,
         updated_at: timestamp,
