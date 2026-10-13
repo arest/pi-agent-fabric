@@ -8,6 +8,7 @@
 
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { redactSecrets } from "../security/sanitize.ts";
 
 const execFileAsync = promisify(execFile);
 
@@ -24,14 +25,62 @@ export interface GhToolkit {
 }
 
 export function createGhToolkit(makeError: GhErrorFactory): GhToolkit {
+  function policyViolation(reason: string): never {
+    throw makeError(`policy violation: ${reason}`);
+  }
+
+  function renderCommand(executable: string, args: string[]): string {
+    const safeArgs = args.map((arg) => redactSecrets(arg));
+    return `${executable} ${safeArgs.join(" ")}`.trim();
+  }
+
+  function assertAllowed(executable: string, args: string[]): void {
+    const command = executable.toLowerCase();
+    if (command === "git") {
+      const [verb = ""] = args;
+      if (verb === "push") {
+        if (args.includes("--force") || args.includes("-f") || args.includes("--force-with-lease")) {
+          policyViolation("denied git action `push --force`");
+        }
+        if (args.includes("--delete") || args.some((arg) => arg.startsWith(":"))) {
+          policyViolation("denied git action `push --delete` (remote branch deletion)");
+        }
+      }
+      if (verb === "reset" && args.includes("--hard")) {
+        policyViolation("denied git action `reset --hard`");
+      }
+      if (verb === "clean") {
+        policyViolation("denied git action `clean`");
+      }
+      return;
+    }
+
+    if (command === "gh") {
+      const [scope = "", action = ""] = args;
+      if (scope === "pr" && action === "merge") {
+        policyViolation("denied GitHub action `gh pr merge`");
+      }
+      if (scope === "api") {
+        const mutatingMethodIndex = args.findIndex((arg) => arg === "-X" || arg === "--method");
+        const method = (mutatingMethodIndex >= 0 ? args[mutatingMethodIndex + 1] : "GET")?.toUpperCase() ?? "GET";
+        const touchesProtection = args.some((arg) => /\/protection\b/i.test(arg) || /required_status_checks/i.test(arg));
+        if (touchesProtection && method !== "GET") {
+          policyViolation("denied GitHub action mutating branch protection or required checks");
+        }
+      }
+    }
+  }
+
   async function run(cwd: string, executable: string, args: string[]): Promise<string> {
+    assertAllowed(executable, args);
     try {
       const result = await execFileAsync(executable, args, { cwd, maxBuffer: 4 * 1024 * 1024 });
       return `${result.stdout}${result.stderr}`.trim();
     } catch (error) {
       const detail = error as { stdout?: string; stderr?: string; message?: string };
-      const reason = `${detail.stdout ?? ""}${detail.stderr ?? detail.message ?? ""}`.trim();
-      throw makeError(`${executable} ${args.join(" ")} failed${reason.length > 0 ? `: ${reason}` : ""}`);
+      const reason = redactSecrets(`${detail.stdout ?? ""}${detail.stderr ?? detail.message ?? ""}`.trim());
+      const command = renderCommand(executable, args);
+      throw makeError(`${command} failed${reason.length > 0 ? `: ${reason}` : ""}`);
     }
   }
 
@@ -44,7 +93,7 @@ export function createGhToolkit(makeError: GhErrorFactory): GhToolkit {
     try {
       return JSON.parse(output) as T;
     } catch {
-      throw makeError(`gh command did not return JSON: gh ${args.join(" ")}`);
+      throw makeError(`gh command did not return JSON: ${renderCommand("gh", args)}`);
     }
   }
 

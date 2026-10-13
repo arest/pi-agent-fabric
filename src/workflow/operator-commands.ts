@@ -23,6 +23,7 @@ import {
   type PromotionTarget,
 } from "./promotion/gh-adapter.ts";
 import { retainRoundEvidence } from "./rounds.ts";
+import { redactSecrets } from "../security/sanitize.ts";
 
 export const OPERATOR_COMMANDS = ["approve", "rework", "retry", "promote", "cancel"] as const;
 export type OperatorCommand = (typeof OPERATOR_COMMANDS)[number];
@@ -328,8 +329,9 @@ function normalizeNote(command: OperatorCommand, note: string | undefined): stri
   if (note === undefined) return undefined;
   const trimmed = note.trim();
   if (trimmed.length === 0) return undefined;
-  if (trimmed.length > MAX_OPERATOR_NOTE_LENGTH) {
+  const redacted = redactSecrets(trimmed);
+  if (redacted.length > MAX_OPERATOR_NOTE_LENGTH) {
     throw new OperatorRequestError(command, `an operator note must be at most ${MAX_OPERATOR_NOTE_LENGTH} characters`);
   }
-  return trimmed;
+  return redacted;
 }

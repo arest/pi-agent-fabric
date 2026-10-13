@@ -5,6 +5,7 @@ import { loadPolicy, policySnapshot } from "../config/policy.ts";
 import { allocateJobId } from "../state/job-id.ts";
 import { appendJobEvent } from "../state/job-events.ts";
 import { factoryPaths, jobDir } from "../state/paths.ts";
+import { redactSecrets } from "../security/sanitize.ts";
 
 /** Thrown when a start request has no usable feature text. */
 export class InvalidFeatureError extends Error {
@@ -40,7 +41,7 @@ export interface StartJobResult {
  * by later tickets; no reviewers or approval flow run here.
  */
 export async function startJob(input: StartJobInput): Promise<StartJobResult> {
-  const feature = input.feature.trim();
+  const feature = redactSecrets(input.feature).trim();
   if (feature.length === 0) throw new InvalidFeatureError();
 
   // This must remain before BoardStore construction/mutation: invalid policy is
