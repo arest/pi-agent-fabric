@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import { writeFileAtomic } from "./atomic-write.ts";
 import { jobEventsFile, type FactoryPaths } from "./paths.ts";
+import { isValidRound } from "./round.ts";
 
 /**
  * One durable line in `factory/jobs/<job-id>/events.jsonl`.
@@ -16,6 +17,13 @@ export interface JobEvent {
   from: string | null;
   to: string;
   actor: string;
+  /**
+   * Review round the event belongs to. Optional for compatibility with events
+   * written before numbered rounds existed; the factory always records it so
+   * repeated event names (for example `build_complete`) stay distinguishable
+   * and idempotency can be checked per round.
+   */
+  round?: number;
 }
 
 /** An event as recorded, before the writer attaches the owning job id. */
@@ -54,7 +62,7 @@ export async function readJobEvents(paths: FactoryPaths, jobId: string): Promise
       }
 
       const record = value as Record<string, unknown>;
-      const { at, job_id, event, from, to, actor } = record;
+      const { at, job_id, event, from, to, actor, round } = record;
       if (
         typeof at !== "string" ||
         typeof job_id !== "string" ||
@@ -65,7 +73,10 @@ export async function readJobEvents(paths: FactoryPaths, jobId: string): Promise
       ) {
         throw new JobEventLogError(`event ${index} for job ${jobId} is missing required fields`);
       }
-      return { at, job_id, event, from, to, actor };
+      if (round !== undefined && !isValidRound(round)) {
+        throw new JobEventLogError(`event ${index} for job ${jobId} has an invalid round`);
+      }
+      return { at, job_id, event, from, to, actor, round: round as number | undefined };
     });
 }
 

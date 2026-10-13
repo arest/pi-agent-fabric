@@ -146,6 +146,7 @@ test("starting a job seeds a durable board entry and job scaffold", async (t) =>
     to: "spec",
     actor: "factory",
     event: "job_created",
+    round: 1,
   });
 
   // No reviewer selection, verdict, or publication flow exists yet.

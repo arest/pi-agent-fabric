@@ -17,7 +17,8 @@ Bootstrap, spec, builder, and reviewer slices are implemented. `/factory
 runs in an isolated job worktree while capturing validated `build.md` evidence.
 The review workflow selects configured read-only reviewers, persists skipped
 roles and reasons, validates every report, waits for all selected reports, and
-routes blocking findings into numbered rework rounds or human escalation.
+routes blocking findings into numbered rework rounds that retain prior evidence
+or into human escalation when the round limit is exhausted.
 Later tickets add the approver, GitHub publication, operator commands, crash
 recovery, and the read-only dashboard.
 
@@ -123,3 +124,14 @@ Recommendations sections. Missing or malformed reports fail closed. Once every
 selected report passes validation, non-blocking findings advance the job to
 `approval`; blocking findings start the next numbered build round, or move the
 job to `needs-human` when the configured round limit is exhausted.
+
+A blocking round is closed durably: its reviewer selection and the build
+evidence it reviewed are retained as `round-<n>/review-plan.json` and
+`round-<n>/build.md` before the next round overwrites the live files, and the
+round's reports stay in place. The resumed builder receives the round number,
+the retained reports, and the blocking findings from the previous round, so
+rework answers specific findings. Board history and `events.jsonl` record the
+round on each entry, so `build_complete` and `review_started` appear once per
+round instead of collapsing into a single durable event. If a retained report is
+missing or malformed when a rework round opens, the factory fails closed to
+`needs-human` rather than resuming the builder on incomplete findings.

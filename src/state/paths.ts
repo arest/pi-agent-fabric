@@ -68,6 +68,22 @@ export function jobReviewReport(paths: FactoryPaths, jobId: string, round: numbe
   return path.join(jobReviewDir(paths, jobId, round), `review-${role}.md`);
 }
 
+/**
+ * `round-<n>/build.md` — the build evidence that the round reviewed, retained
+ * when the round closes so a later rework overwrites only the live `build.md`.
+ */
+export function jobRoundBuildFile(paths: FactoryPaths, jobId: string, round: number): string {
+  return path.join(jobReviewDir(paths, jobId, round), "build.md");
+}
+
+/**
+ * `round-<n>/review-plan.json` — the reviewer selection that ran in the round,
+ * retained so a rework round's plan does not erase the previous round's.
+ */
+export function jobRoundReviewPlan(paths: FactoryPaths, jobId: string, round: number): string {
+  return path.join(jobReviewDir(paths, jobId, round), "review-plan.json");
+}
+
 export function jobReviewLock(paths: FactoryPaths, jobId: string): string {
   return path.join(jobDir(paths, jobId), ".review.lock");
 }

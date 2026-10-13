@@ -63,7 +63,7 @@ summary of them.
       "created_at": "2026-10-12T10:30:00Z",
       "updated_at": "2026-10-12T10:30:00Z",
       "history": [
-        { "at": "2026-10-12T10:30:00Z", "from": null, "to": "spec", "actor": "factory", "event": "job_created" }
+        { "at": "2026-10-12T10:30:00Z", "from": null, "to": "spec", "actor": "factory", "event": "job_created", "round": 1 }
       ]
     }
   ]
@@ -76,6 +76,9 @@ summary of them.
 - Writes are serialized by a lock, applied to a private copy, and swapped in
   atomically. History entries are append-only and prior artifacts are never
   deleted.
+- History entries and `events.jsonl` records carry the `round` they belong to,
+  so events that repeat across rework rounds (`build_complete`, `review_started`)
+  stay distinguishable and are recorded once per round.
 
 ## Job ids
 
@@ -92,7 +95,8 @@ the feature text and contains only `[a-z0-9-]`.
 | build evidence complete | `build` | `review` |
 | all selected reviewers reported | `review` | `approval` |
 | blocking `CHANGES` | `review` | `build` (round + 1, history retained) |
-| round limit exhausted | any review/build | `needs-human` |
+| round limit exhausted | `review` | status `needs-human`, stage `review` (history retained) |
+| unreadable retained report on a rework round | `build` | status `needs-human`, stage `build` (`build_failed:rework_context`) |
 | `APPROVE` | `approval` | `publication` |
 | `ESCALATE` | `approval` | `needs-human` |
 | PR opened | `publication` | `waiting_for_human` |
@@ -101,3 +105,7 @@ the feature text and contains only `[a-z0-9-]`.
 Invalid transitions are rejected without mutating state. Later tickets
 (`approve`, `rework`, `retry`, `promote`, `cancel`) add operator-driven
 transitions with their own eligibility guards.
+
+`policy.limits.max_review_rounds` bounds the **total number of review rounds**,
+not the number of reworks. A blocking finding in the last permitted round has no
+next round to open, so it escalates to `needs-human` instead.

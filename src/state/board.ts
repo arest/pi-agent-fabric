@@ -6,6 +6,8 @@
  * artifacts and never mutate this file.
  */
 
+import { isValidRound } from "./round.ts";
+
 /** Shape version of the board document. Bump with a migration when fields change. */
 export const BOARD_SCHEMA_VERSION = 1;
 
@@ -62,6 +64,12 @@ export interface HistoryEntry {
    * shape still load. The factory always records it.
    */
   event?: string;
+  /**
+   * Review round the transition belongs to. Optional for the same compatibility
+   * reason as `event`; the factory records it so numbered rework rounds keep a
+   * distinct, auditable history even when they repeat an event name.
+   */
+  round?: number;
 }
 
 export interface JobPolicySnapshot {
@@ -135,7 +143,7 @@ function parseHistory(value: unknown, jobId: string): HistoryEntry[] {
     if (!isRecord(entry)) {
       throw new BoardIntegrityError(`job ${jobId} history[${index}] is not an object`);
     }
-    const { at, to, actor, event } = entry;
+    const { at, to, actor, event, round } = entry;
     const from = entry.from;
     if (typeof at !== "string" || typeof actor !== "string") {
       throw new BoardIntegrityError(`job ${jobId} history[${index}] is missing required text fields`);
@@ -143,10 +151,13 @@ function parseHistory(value: unknown, jobId: string): HistoryEntry[] {
     if (event !== undefined && typeof event !== "string") {
       throw new BoardIntegrityError(`job ${jobId} history[${index}] has a non-text event`);
     }
+    if (round !== undefined && !isValidRound(round)) {
+      throw new BoardIntegrityError(`job ${jobId} history[${index}] has an invalid round`);
+    }
     if (!isStage(to) || !(from === null || isStage(from))) {
       throw new BoardIntegrityError(`job ${jobId} history[${index}] has an invalid stage`);
     }
-    return { at, from: from as Stage | null, to, actor, event };
+    return { at, from: from as Stage | null, to, actor, event, round: round as number | undefined };
   });
 }
 
@@ -203,7 +214,7 @@ function parseJob(value: unknown, index: number): Job {
   if (mode !== "develop") {
     throw new BoardIntegrityError(`job ${id} has unsupported mode ${String(mode)}`);
   }
-  if (typeof round !== "number" || !Number.isInteger(round) || round < 1) {
+  if (!isValidRound(round)) {
     throw new BoardIntegrityError(`job ${id} has an invalid round`);
   }
   if (!isStage(value.stage)) {

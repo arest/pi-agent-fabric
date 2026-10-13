@@ -46,3 +46,22 @@ export class InvalidJobStateError extends Error {
     this.expected = expected;
   }
 }
+
+/**
+ * A rework round could not reconstruct the previous round's retained review
+ * evidence. The factory must not resume a builder on incomplete findings, so
+ * the job escalates to a human instead of guessing.
+ */
+export class ReworkContextError extends Error {
+  readonly jobId: string;
+  readonly round: number;
+  readonly reason: string;
+
+  constructor(jobId: string, round: number, reason: string) {
+    super(`factory job ${jobId} cannot open rework round ${round}: ${reason}`);
+    this.name = "ReworkContextError";
+    this.jobId = jobId;
+    this.round = round;
+    this.reason = reason;
+  }
+}

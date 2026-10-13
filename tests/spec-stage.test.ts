@@ -51,6 +51,7 @@ test("a complete spec advances the job from spec to build with durable history",
       to: "build",
       actor: "factory",
       event: "spec_complete",
+      round: 1,
     });
 
     const after = await readBoard(cwd);

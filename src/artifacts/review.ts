@@ -54,6 +54,10 @@ export function assertReviewComplete(markdown: string, reportFile = "review repo
   return { verdict, severity, markdown };
 }
 
+export function isBlockingReport(report: Pick<ParsedReview, "verdict" | "severity">): boolean {
+  return report.verdict === "CHANGES" && report.severity === "BLOCKING";
+}
+
 export function renderReviewTemplate(role: string): string {
   return [
     `# ${role} review`,

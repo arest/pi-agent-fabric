@@ -99,8 +99,10 @@ export async function runSpecStage(input: RunSpecStageInput): Promise<RunSpecSta
     assertSpecStage(current);
 
     const events = await readJobEvents(paths, current.id);
-    const entry = { at, from: "spec" as const, to: "build" as const, actor: "factory", event: "spec_complete" };
-    if (!events.some((event) => event.event === entry.event)) {
+    const entry = { at, from: "spec" as const, to: "build" as const, actor: "factory", event: "spec_complete", round: current.round };
+    // A round-less event is a legacy record from before rounds existed; it
+    // suppresses only the first round's duplicate.
+    if (!events.some((event) => event.event === entry.event && (event.round === entry.round || (event.round === undefined && entry.round === 1)))) {
       await appendJobEvent(paths, current.id, entry);
     }
 

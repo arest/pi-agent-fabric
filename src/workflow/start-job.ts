@@ -69,6 +69,7 @@ export async function startJob(input: StartJobInput): Promise<StartJobResult> {
         to: "spec" as const,
         actor: "factory",
         event: "job_created",
+        round: 1,
       };
       await appendJobEvent(paths, id, jobCreated);
 

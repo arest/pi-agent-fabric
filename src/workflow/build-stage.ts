@@ -8,7 +8,8 @@ import { BoardStore } from "../state/board-store.ts";
 import { appendJobEvent, readJobEvents } from "../state/job-events.ts";
 import { acquireLock, LockTimeoutError, type LockHandle, type LockOptions } from "../state/lock.ts";
 import { factoryPaths, jobBuildFile, jobSpecFile, jobWorktree } from "../state/paths.ts";
-import { InvalidJobStateError, JobNotFoundError, SpecNotFoundError } from "./errors.ts";
+import { InvalidJobStateError, JobNotFoundError, ReworkContextError, SpecNotFoundError } from "./errors.ts";
+import { readReworkContext, type ReworkContext } from "./rounds.ts";
 import { loadPolicy, type FactoryPolicy } from "../config/policy.ts";
 
 const execFileAsync = promisify(execFile);
@@ -27,6 +28,14 @@ export interface BuilderInput {
   buildFile: string;
   job: Job;
   validation: ValidationResult[];
+  /** Numbered build/review round the builder is working on (1 for the first). */
+  round: number;
+  /**
+   * Set on rework rounds: the previous round's blocking findings and every
+   * retained report, so the builder answers specific findings. `null` on the
+   * first round.
+   */
+  rework: ReworkContext | null;
 }
 
 /** The builder owns application code and build.md, never the board. */
@@ -98,6 +107,10 @@ export async function runBuildStage(input: RunBuildStageInput): Promise<RunBuild
     const lockedJob = lockedBoard.jobs.find((candidate) => candidate.id === job.id);
     if (!lockedJob) throw new JobNotFoundError(job.id);
     assertBuildStage(lockedJob);
+    // Rework rounds must answer the previous round's blocking findings. If the
+    // retained evidence cannot be reconstructed, resuming the builder would
+    // silently drop them, so the job escalates to a human instead.
+    const rework = await readReworkContext(paths, lockedJob.id, lockedJob.round);
     const runValidation = input.runValidation ?? runConfiguredValidation;
     const validation: ValidationResult[] = [];
     const buildFile = jobBuildFile(paths, job.id);
@@ -106,15 +119,17 @@ export async function runBuildStage(input: RunBuildStageInput): Promise<RunBuild
       worktree: prepared.path,
       specFile: jobSpecFile(paths, job.id),
       buildFile,
-      job,
+      job: lockedJob,
       validation,
+      round: lockedJob.round,
+      rework,
     });
     for (const command of policy.repository.test_commands) {
       const result = await runValidation(command, prepared.path);
       validation.push(result);
       await mergeValidationEvidence(buildFile, validation);
       if (result.outcome === "FAIL") {
-        await recordBuildFailure(store, paths, job.id, input.now, `validation_failed:${command.name}`);
+        await recordBuildStop(store, paths, job.id, input.now, `validation_failed:${command.name}`, "blocked");
         throw new BuildFailedError(job.id, `validation command ${command.name} failed`);
       }
     }
@@ -126,9 +141,14 @@ export async function runBuildStage(input: RunBuildStageInput): Promise<RunBuild
       const current = draft.jobs.find((candidate) => candidate.id === job.id);
       if (!current) throw new JobNotFoundError(job.id);
       assertBuildStage(current);
-      const entry = { at, from: "build" as const, to: "review" as const, actor: "factory", event: "build_complete" };
+      const entry = { at, from: "build" as const, to: "review" as const, actor: "factory", event: "build_complete", round: current.round };
       const events = await readJobEvents(paths, current.id);
-      if (!events.some((event) => event.event === entry.event)) await appendJobEvent(paths, current.id, entry);
+      // Idempotency is per round: a crash between the event append and the board
+      // write must not duplicate the round's event, but the next round's
+      // identical event name must still be recorded. A round-less event is a
+      // legacy record from before rounds existed, so it suppresses only the
+      // first round's duplicate.
+      if (!events.some((event) => event.event === entry.event && (event.round === entry.round || (event.round === undefined && entry.round === 1)))) await appendJobEvent(paths, current.id, entry);
       current.history.push(entry);
       current.stage = "review";
       current.updated_at = at;
@@ -140,10 +160,15 @@ export async function runBuildStage(input: RunBuildStageInput): Promise<RunBuild
     if (error instanceof LockTimeoutError) {
       // A live builder may still own the worktree. Do not block its job while
       // merely reporting contention; the owner must be allowed to finish.
+    } else if (error instanceof ReworkContextError) {
+      // A rework round that cannot reconstruct its retained findings is a
+      // conflict automation must not guess through, so the job becomes
+      // explicitly human-needed instead of blocked-and-retryable.
+      await recordBuildStop(store, paths, job.id, input.now, "rework_context", "needs-human");
     } else if (error instanceof BuildEvidenceError) {
-      await recordBuildFailure(store, paths, job.id, input.now, "incomplete_evidence");
+      await recordBuildStop(store, paths, job.id, input.now, "incomplete_evidence", "blocked");
     } else if (!(error instanceof InvalidJobStateError)) {
-      await recordBuildFailure(store, paths, job.id, input.now, "builder_error");
+      await recordBuildStop(store, paths, job.id, input.now, "builder_error", "blocked");
     }
     throw error;
   } finally {
@@ -167,15 +192,22 @@ function assertBuildStage(job: Job): void {
   }
 }
 
-async function recordBuildFailure(store: BoardStore, paths: ReturnType<typeof factoryPaths>, jobId: string, now: (() => Date) | undefined, eventName: string): Promise<void> {
+async function recordBuildStop(
+  store: BoardStore,
+  paths: ReturnType<typeof factoryPaths>,
+  jobId: string,
+  now: (() => Date) | undefined,
+  eventName: string,
+  status: "blocked" | "needs-human",
+): Promise<void> {
   const at = (now ?? (() => new Date()))().toISOString();
   await store.mutate(async (draft) => {
     const current = draft.jobs.find((candidate) => candidate.id === jobId);
     if (!current || current.stage !== "build" || current.status !== "active") return;
-    const entry = { at, from: "build" as const, to: "build" as const, actor: "factory", event: `build_failed:${eventName}` };
+    const entry = { at, from: "build" as const, to: "build" as const, actor: "factory", event: `build_failed:${eventName}`, round: current.round };
     await appendJobEvent(paths, jobId, entry);
     current.history.push(entry);
-    current.status = "blocked";
+    current.status = status;
     current.updated_at = at;
   });
 }

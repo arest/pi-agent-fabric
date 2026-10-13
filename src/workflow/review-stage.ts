@@ -1,6 +1,5 @@
 import fs from "node:fs/promises";
-import path from "node:path";
-import { assertReviewComplete, type ParsedReview, type ReviewSeverity, type ReviewVerdict } from "../artifacts/review.ts";
+import { assertReviewComplete, isBlockingReport, type ParsedReview, type ReviewSeverity, type ReviewVerdict } from "../artifacts/review.ts";
 import { writeFileAtomic } from "../state/atomic-write.ts";
 import type { Board, Job, ReviewPlan } from "../state/board.ts";
 import { BoardStore } from "../state/board-store.ts";
@@ -9,6 +8,7 @@ import { acquireLock, type LockOptions } from "../state/lock.ts";
 import { factoryPaths, jobBuildFile, jobReviewDir, jobReviewLock, jobReviewPlan, jobReviewReport } from "../state/paths.ts";
 import { loadPolicy } from "../config/policy.ts";
 import { InvalidJobStateError, JobNotFoundError } from "./errors.ts";
+import { retainRoundEvidence } from "./rounds.ts";
 
 export interface ReviewerInput {
   cwd: string;
@@ -81,7 +81,7 @@ export async function runReviewStage(input: RunReviewStageInput): Promise<Review
         current.review_plan = plan;
         await writeFileAtomic(jobReviewPlan(paths, current.id), `${JSON.stringify(plan, null, 2)}\n`);
         current.updated_at = at;
-        const entry = { at, from: "review" as const, to: "review" as const, actor: "factory", event: "review_started" };
+        const entry = { at, from: "review" as const, to: "review" as const, actor: "factory", event: "review_started", round: current.round };
         current.history.push(entry);
         await appendJobEvent(paths, current.id, entry);
       });
@@ -106,23 +106,25 @@ export async function runReviewStage(input: RunReviewStageInput): Promise<Review
     }
     if (incomplete.length > 0) throw new ReviewIncompleteError(incomplete);
 
-    const blocking = Object.entries(reports).some(([, report]) => report.verdict === "CHANGES" && report.severity === "BLOCKING");
+    const blocking = Object.values(reports).some(isBlockingReport);
     const { board, result } = await store.mutate(async (draft) => {
       const current = draft.jobs.find((candidate) => candidate.id === job.id);
       if (!current) throw new JobNotFoundError(job.id);
       assertReviewStage(current);
       for (const [role, report] of Object.entries(reports)) current.verdicts[`${role}:round-${current.round}`] = report.verdict;
-      const eventName = blocking ? (current.round >= policy.limits.max_review_rounds ? "review_exhausted" : "review_rework") : "review_complete";
-      if (blocking && current.round < policy.limits.max_review_rounds) {
-        await fs.copyFile(jobBuildFile(paths, current.id), path.join(jobReviewDir(paths, current.id, current.round), "build.md"));
-      }
-      const to = blocking && current.round < policy.limits.max_review_rounds ? "build" as const : blocking ? "review" as const : "approval" as const;
-      const entry = { at, from: "review" as const, to, actor: "factory", event: eventName };
+      const exhausts = blocking && current.round >= policy.limits.max_review_rounds;
+      const eventName = blocking ? (exhausts ? "review_exhausted" : "review_rework") : "review_complete";
+      // A blocking round is closed either into rework or into human escalation.
+      // Retain the round's selection and build evidence before the live files are
+      // overwritten by the next round, and never delete the round's reports.
+      if (blocking) await retainRoundEvidence(paths, current.id, current.round);
+      const to = blocking && !exhausts ? "build" as const : blocking ? "review" as const : "approval" as const;
+      const entry = { at, from: "review" as const, to, actor: "factory", event: eventName, round: current.round };
       current.history.push(entry);
       await appendJobEvent(paths, current.id, entry);
       current.updated_at = at;
       if (!blocking) current.stage = "approval";
-      else if (current.round < policy.limits.max_review_rounds) { current.round += 1; current.stage = "build"; current.review_plan = null; }
+      else if (!exhausts) { current.round += 1; current.stage = "build"; current.review_plan = null; }
       else current.status = "needs-human";
       return current;
     });
