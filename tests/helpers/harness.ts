@@ -115,6 +115,7 @@ export interface RecordedEvent {
   to: string;
   actor: string;
   round?: number;
+  note?: string;
 }
 
 export async function readJobEvents(cwd: string, jobId: string): Promise<RecordedEvent[]> {

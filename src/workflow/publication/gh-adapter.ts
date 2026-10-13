@@ -1,9 +1,8 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import type { FactoryPolicy } from "../../config/policy.ts";
 import type { Job, PullRequest } from "../../state/board.ts";
+import { createGhToolkit } from "../gh.ts";
 
-const execFileAsync = promisify(execFile);
+const gh = createGhToolkit((message) => new PublicationAdapterError(message));
 
 export interface PublicationAdapterInput {
   cwd: string;
@@ -31,12 +30,12 @@ export function createGhPublicationAdapter(): PublicationAdapter {
 }
 
 async function runGhPreflight(input: PublicationAdapterInput): Promise<void> {
-  await gh(input.cwd, ["auth", "status"]);
+  await gh.gh(input.cwd, ["auth", "status"]);
 
-  const repoView = await ghJson<{ nameWithOwner?: unknown }>(input.cwd, ["repo", "view", "--json", "nameWithOwner"]);
-  const repoIdentity = asString(repoView.nameWithOwner, "gh repo identity");
+  const repoView = await gh.ghJson<{ nameWithOwner?: unknown }>(input.cwd, ["repo", "view", "--json", "nameWithOwner"]);
+  const repoIdentity = gh.asString(repoView.nameWithOwner, "gh repo identity");
 
-  const originUrl = (await run(input.cwd, "git", ["config", "--get", "remote.origin.url"])).trim();
+  const originUrl = (await gh.run(input.cwd, "git", ["config", "--get", "remote.origin.url"])).trim();
   const originIdentity = parseRepositoryIdentity(originUrl);
   if (originIdentity === null) {
     throw new PublicationAdapterError(`could not parse repository identity from remote.origin.url (${originUrl})`);
@@ -48,7 +47,7 @@ async function runGhPreflight(input: PublicationAdapterInput): Promise<void> {
   const [owner, name] = repoIdentity.split("/");
   if (!owner || !name) throw new PublicationAdapterError(`invalid repository identity ${repoIdentity}`);
 
-  const permissionResponse = await ghJson<{ data?: { repository?: { viewerPermission?: unknown } } }>(input.cwd, [
+  const permissionResponse = await gh.ghJson<{ data?: { repository?: { viewerPermission?: unknown } } }>(input.cwd, [
     "api",
     "graphql",
     "-f",
@@ -58,19 +57,24 @@ async function runGhPreflight(input: PublicationAdapterInput): Promise<void> {
     "-f",
     `name=${name}`,
   ]);
-  const permission = asString(permissionResponse.data?.repository?.viewerPermission, "GitHub viewer permission");
+  const permission = gh.asString(permissionResponse.data?.repository?.viewerPermission, "GitHub viewer permission");
   if (!["ADMIN", "MAINTAIN", "WRITE"].includes(permission)) {
     throw new PublicationAdapterError(`insufficient GitHub permission for PR publication (${permission})`);
   }
 
-  const headSha = (await run(input.cwd, "git", ["rev-parse", "HEAD"])).trim();
-  await gh(input.cwd, ["api", `repos/${repoIdentity}/commits/${headSha}/check-runs`, "-H", "Accept: application/vnd.github+json"]);
+  const headSha = (await gh.run(input.cwd, "git", ["rev-parse", "HEAD"])).trim();
+  await gh.gh(input.cwd, [
+    "api",
+    `repos/${repoIdentity}/commits/${headSha}/check-runs`,
+    "-H",
+    "Accept: application/vnd.github+json",
+  ]);
 }
 
 async function ensureGhPullRequest(input: PublicationAdapterInput): Promise<PullRequest> {
-  await run(input.cwd, "git", ["push", "-u", "origin", input.job.branch]);
+  await gh.run(input.cwd, "git", ["push", "-u", "origin", input.job.branch]);
 
-  const existing = await ghJson<Array<{ number?: unknown; url?: unknown; state?: unknown }>>(input.cwd, [
+  const existing = await gh.ghJson<Array<{ number?: unknown; url?: unknown; state?: unknown }>>(input.cwd, [
     "pr",
     "list",
     "--head",
@@ -85,7 +89,7 @@ async function ensureGhPullRequest(input: PublicationAdapterInput): Promise<Pull
 
   let prNumber: number | null = null;
   if (existing.length > 0) {
-    prNumber = asNumber(existing[0]?.number, "open PR number");
+    prNumber = gh.asNumber(existing[0]?.number, "open PR number");
   } else {
     const title = `[factory] ${input.job.id}: ${input.job.feature}`;
     const body = [
@@ -95,7 +99,7 @@ async function ensureGhPullRequest(input: PublicationAdapterInput): Promise<Pull
       "- Merge policy: human merge required",
       "- Auto-merge: disabled",
     ].join("\n");
-    await gh(input.cwd, [
+    await gh.gh(input.cwd, [
       "pr",
       "create",
       "--base",
@@ -109,7 +113,7 @@ async function ensureGhPullRequest(input: PublicationAdapterInput): Promise<Pull
     ]);
   }
 
-  const view = await ghJson<{ url?: unknown; state?: unknown }>(input.cwd, [
+  const view = await gh.ghJson<{ url?: unknown; state?: unknown }>(input.cwd, [
     "pr",
     "view",
     prNumber === null ? input.job.branch : String(prNumber),
@@ -118,8 +122,8 @@ async function ensureGhPullRequest(input: PublicationAdapterInput): Promise<Pull
   ]);
 
   return {
-    url: asString(view.url, "pull request url"),
-    state: asString(view.state, "pull request state"),
+    url: gh.asString(view.url, "pull request url"),
+    state: gh.asString(view.state, "pull request state"),
     merge_state: "WAITING_FOR_HUMAN",
   };
 }
@@ -132,42 +136,4 @@ function parseRepositoryIdentity(remoteUrl: string): string | null {
   if (https) return `${https[1]}/${https[2]}`;
 
   return null;
-}
-
-function asString(value: unknown, context: string): string {
-  if (typeof value !== "string" || value.trim().length === 0) {
-    throw new PublicationAdapterError(`${context} is missing or not text`);
-  }
-  return value;
-}
-
-function asNumber(value: unknown, context: string): number {
-  if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
-    throw new PublicationAdapterError(`${context} is missing or invalid`);
-  }
-  return value;
-}
-
-async function gh(cwd: string, args: string[]): Promise<string> {
-  return run(cwd, "gh", args);
-}
-
-async function ghJson<T>(cwd: string, args: string[]): Promise<T> {
-  const output = await gh(cwd, args);
-  try {
-    return JSON.parse(output) as T;
-  } catch {
-    throw new PublicationAdapterError(`gh command did not return JSON: gh ${args.join(" ")}`);
-  }
-}
-
-async function run(cwd: string, executable: string, args: string[]): Promise<string> {
-  try {
-    const result = await execFileAsync(executable, args, { cwd, maxBuffer: 4 * 1024 * 1024 });
-    return `${result.stdout}${result.stderr}`.trim();
-  } catch (error) {
-    const detail = error as { stdout?: string; stderr?: string; message?: string };
-    const reason = `${detail.stdout ?? ""}${detail.stderr ?? detail.message ?? ""}`.trim();
-    throw new PublicationAdapterError(`${executable} ${args.join(" ")} failed${reason.length > 0 ? `: ${reason}` : ""}`);
-  }
 }

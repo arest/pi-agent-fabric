@@ -26,13 +26,23 @@ PR waiting for human merge
 ## Commands
 
 ```text
-/factory <feature>     start a job scaffold (implemented)
-/factory spec <job-id> scaffold, validate, and advance the job's spec stage (implemented)
+/factory <feature>                     start a job scaffold (implemented)
+/factory spec <job-id>                 scaffold, validate, and advance the job's spec stage (implemented)
+/factory approve <job-id> [note]       resolve an approver ESCALATE (implemented)
+/factory rework <job-id> <note>        open the next numbered builder round (implemented)
+/factory retry <job-id> [note]         clear a recoverable blocked condition (implemented)
+/factory promote <job-id> [main|master] prepare a human-merged promotion PR (implemented)
+/factory cancel <job-id> [note]        cancel a non-terminal job, preserving history (implemented)
 ```
 
-Later tickets add `/factory next`, `approve`, `rework`, `retry`, `promote`, and
-`cancel`. Do not invent behavior for commands that are not implemented: report
-that the command is unavailable instead.
+`/factory next` is reserved for a later ticket. Do not invent behavior for
+commands that are not implemented: report that the command is unavailable
+instead.
+
+Operator commands are guarded: an ineligible request is refused with an
+explicit message and leaves the board untouched. See
+`references/state-machine.md` for the eligibility table. None of them merges,
+and none deletes branches, worktrees, PRs, or artifacts.
 
 `spec` selects a subcommand only with exactly one argument that looks like a job
 id (`NNN-slug`). A lone non-id argument is reported as a likely typo rather than

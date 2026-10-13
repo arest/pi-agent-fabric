@@ -24,6 +24,8 @@ export interface JobEvent {
    * and idempotency can be checked per round.
    */
   round?: number;
+  /** Operator note attached to a human-driven transition. Untrusted text. */
+  note?: string;
 }
 
 /** An event as recorded, before the writer attaches the owning job id. */
@@ -62,7 +64,7 @@ export async function readJobEvents(paths: FactoryPaths, jobId: string): Promise
       }
 
       const record = value as Record<string, unknown>;
-      const { at, job_id, event, from, to, actor, round } = record;
+      const { at, job_id, event, from, to, actor, round, note } = record;
       if (
         typeof at !== "string" ||
         typeof job_id !== "string" ||
@@ -76,7 +78,12 @@ export async function readJobEvents(paths: FactoryPaths, jobId: string): Promise
       if (round !== undefined && !isValidRound(round)) {
         throw new JobEventLogError(`event ${index} for job ${jobId} has an invalid round`);
       }
-      return { at, job_id, event, from, to, actor, round: round as number | undefined };
+      if (note !== undefined && typeof note !== "string") {
+        throw new JobEventLogError(`event ${index} for job ${jobId} has a non-text note`);
+      }
+      return note === undefined
+        ? { at, job_id, event, from, to, actor, round: round as number | undefined }
+        : { at, job_id, event, from, to, actor, round: round as number | undefined, note };
     });
 }
 

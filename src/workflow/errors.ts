@@ -48,6 +48,43 @@ export class InvalidJobStateError extends Error {
 }
 
 /**
+ * An operator command was requested for a job whose durable state does not
+ * permit it. The transition is rejected without mutating the board so the
+ * operator gets an explicit, non-guessing failure.
+ */
+export class CommandNotEligibleError extends Error {
+  readonly command: string;
+  readonly jobId: string;
+  readonly reason: string;
+  readonly stage: string;
+  readonly status: string;
+
+  constructor(command: string, jobId: string, reason: string, stage: string, status: string) {
+    super(`cannot ${command} factory job ${jobId}: ${reason} (job is ${stage}/${status})`);
+    this.name = "CommandNotEligibleError";
+    this.command = command;
+    this.jobId = jobId;
+    this.reason = reason;
+    this.stage = stage;
+    this.status = status;
+  }
+}
+
+/**
+ * An operator command was well-formed but the request itself is unusable, for
+ * example a `rework` with no note. Reported as usage by the command surface.
+ */
+export class OperatorRequestError extends Error {
+  readonly command: string;
+
+  constructor(command: string, message: string) {
+    super(message);
+    this.name = "OperatorRequestError";
+    this.command = command;
+  }
+}
+
+/**
  * A rework round could not reconstruct the previous round's retained review
  * evidence. The factory must not resume a builder on incomplete findings, so
  * the job escalates to a human instead of guessing.

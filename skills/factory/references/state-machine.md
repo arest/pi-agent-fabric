@@ -60,6 +60,7 @@ summary of them.
       "review_plan": null,
       "verdicts": {},
       "pull_request": null,
+      "promotion": null,
       "created_at": "2026-10-12T10:30:00Z",
       "updated_at": "2026-10-12T10:30:00Z",
       "history": [
@@ -101,10 +102,42 @@ the feature text and contains only `[a-z0-9-]`.
 | `ESCALATE` | `approval` | `needs-human` |
 | PR opened | `publication` | `waiting_for_human` |
 | human merge (GitHub) | `waiting_for_human` | `merged` |
+| `/factory approve <job-id>` from an approver `ESCALATE` | `approval` / `needs-human` | `publication` / `active` (human action recorded) |
+| `/factory rework <job-id> <note>` from a human escalation | `review` or `approval` / `needs-human` | `build` / `active`, round + 1 (closed round retained) |
+| `/factory retry <job-id>` | any stage / `blocked` | same stage / `active` |
+| `/factory cancel <job-id>` | any non-terminal state | same stage / `cancelled` |
+| `/factory promote <job-id> [main or master]` | `waiting_for_human` / `needs-human` with a PR | same state, promotion PR recorded |
 
-Invalid transitions are rejected without mutating state. Later tickets
-(`approve`, `rework`, `retry`, `promote`, `cancel`) add operator-driven
-transitions with their own eligibility guards.
+Invalid transitions are rejected without mutating state: an operator command
+that is not eligible throws `CommandNotEligibleError` and the board is left
+exactly as it was.
+
+## Operator commands
+
+Operator commands are guarded transitions owned by the extension. They never
+delete history, artifacts, branches, worktrees, or PRs, and none of them merges.
+
+- **approve** only resolves an approver `ESCALATE` at the approval gate. It
+  records the human action and moves the job to `publication`/`active`. It cannot
+  override a review-exhaustion escalation, which requires an explicit `rework`.
+- **rework** is only eligible while the job is `needs-human` at `review`
+  (round limit reached) or `approval` (approver escalated). It retains the
+  closed round's plan and evidence, increments `round`, clears `review_plan`,
+  and returns the job to `build`/`active`. The required operator note is appended
+  to `history` and `events.jsonl` and handed to the resumed builder.
+- **retry** is only eligible for a `blocked` job, which the factory reserves for
+  recoverable contention or external failure. `needs-human` is never retried:
+  automation must not guess.
+- **promote** is only eligible once a job is published and awaiting its human
+  merge. It prepares (or reuses) a promotion PR from the job's integration branch
+  to a protected branch and records it on the job. The factory never merges it
+  and never changes branch protection.
+- **cancel** is eligible for any non-terminal job. It records the operator note,
+  stops active child work where a host provides a stopper, and sets `cancelled`.
+  It preserves every artifact, the branch, the worktree, and any PR.
+
+The `round` on a `human_rework` event is the round being closed, so the new
+build runs in round + 1.
 
 `policy.limits.max_review_rounds` bounds the **total number of review rounds**,
 not the number of reworks. A blocking finding in the last permitted round has no

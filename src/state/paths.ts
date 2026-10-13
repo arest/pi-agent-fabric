@@ -100,3 +100,11 @@ export function jobApprovalLock(paths: FactoryPaths, jobId: string): string {
 export function jobPublicationLock(paths: FactoryPaths, jobId: string): string {
   return path.join(jobDir(paths, jobId), ".publication.lock");
 }
+
+/**
+ * `factory/jobs/<job-id>/.promotion.lock` — serializes `/factory promote` so a
+ * concurrent request cannot prepare a second promotion PR for the same job.
+ */
+export function jobPromotionLock(paths: FactoryPaths, jobId: string): string {
+  return path.join(jobDir(paths, jobId), ".promotion.lock");
+}

@@ -24,17 +24,24 @@ spec, implementation evidence, and policy context, then persists `APPROVE` or
 `ESCALATE` as a distinct durable decision. The publication workflow performs a
 GitHub preflight (auth, repository identity, PR capability, and checks-read
 capability), opens or monitors a PR to `develop`, and moves approved jobs to
-`waiting_for_human` with no auto-merge.
-Later tickets add operator commands, crash recovery, and the read-only
-dashboard.
+`waiting_for_human` with no auto-merge. Operator commands provide guarded
+`approve`, `rework`, `retry`, `promote`, and `cancel` transitions that preserve
+history and never delete work or merge.
+Later tickets add crash recovery and the read-only dashboard.
 
 ```text
-/factory <feature>      start a job scaffold           (implemented)
-/factory spec <job-id>  complete the spec stage        (implemented)
+/factory <feature>                       start a job scaffold            (implemented)
+/factory spec <job-id>                   complete the spec stage         (implemented)
+/factory approve <job-id> [note]         resolve an approver ESCALATE    (implemented)
+/factory rework <job-id> <note>          open the next builder round     (implemented)
+/factory retry <job-id> [note]           clear a recoverable failure     (implemented)
+/factory promote <job-id> [main|master]  prepare a promotion PR          (implemented)
+/factory cancel <job-id> [note]          cancel, preserving all history  (implemented)
 ```
 
-All other `/factory` subcommands are not implemented yet and report that they
-are unavailable.
+An operator command that is not eligible for the job's current state fails with
+an explicit message and leaves the board untouched. `/factory next` remains
+unavailable and reports so.
 
 ## Install
 

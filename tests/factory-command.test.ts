@@ -216,20 +216,16 @@ test("feature text cannot escape the job id or branch namespace", async (t) => {
   assert.equal(job.branch, `factory/${job.id}`);
 });
 
-test("reserved operator subcommands are refused instead of becoming a job", async (t) => {
+test("the unimplemented `next` subcommand is refused instead of becoming a job", async (t) => {
   const cwd = await makeTempRepo();
   t.after(() => removeTempRepo(cwd));
 
   const harness = createHarness(cwd);
-  for (const verb of ["next", "approve", "rework", "retry", "promote", "cancel"]) {
-    await harness.run("factory", `${verb} 001-some-job`);
-  }
+  await harness.run("factory", "next 001-some-job");
 
-  assert.equal(harness.notifications.length, 6);
-  for (const notification of harness.notifications) {
-    assert.equal(notification.type, "warning");
-    assert.match(notification.message, /not available yet/);
-  }
+  assert.equal(harness.notifications.length, 1);
+  assert.equal(harness.notifications[0].type, "warning");
+  assert.match(harness.notifications[0].message, /not available yet/);
   await assert.rejects(fs.access(boardPath(cwd)), "no job may be created for a reserved subcommand");
 });
 

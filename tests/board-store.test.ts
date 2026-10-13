@@ -240,6 +240,7 @@ function makeJob(id: string) {
     verdicts: {},
     approval: null,
     pull_request: null,
+    promotion: null,
     created_at: at,
     updated_at: at,
     history: [{ at, from: null, to: "spec" as const, actor: "factory", event: "job_created" }],

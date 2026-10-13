@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import { assertReviewComplete, isBlockingReport, type ReviewSeverity, type ReviewVerdict } from "../artifacts/review.ts";
+import { readJobEvents } from "../state/job-events.ts";
 import {
   jobBuildFile,
   jobReviewDir,
@@ -29,6 +30,12 @@ export interface ReworkContext {
   priorReports: PriorRoundReport[];
   /** The subset of `priorReports` that blocked the previous round. */
   blocking: PriorRoundReport[];
+  /**
+   * Operator notes from earlier `/factory rework` requests, oldest first. An
+   * automatic round has none; a human-driven round carries the guidance that
+   * opened it so the resumed builder can act on it.
+   */
+  humanNotes: string[];
 }
 
 interface RetainedPlan {
@@ -101,7 +108,20 @@ export async function readReworkContext(paths: FactoryPaths, jobId: string, roun
     fromRound: round - 1,
     priorReports,
     blocking: priorReports.filter((report) => report.round === round - 1 && isBlockingReport(report)),
+    humanNotes: await readHumanNotes(paths, jobId, round),
   };
+}
+
+/**
+ * Operator guidance attached to earlier human rework rounds, oldest first. A
+ * missing event log reads as no human guidance.
+ */
+async function readHumanNotes(paths: FactoryPaths, jobId: string, round: number): Promise<string[]> {
+  const events = await readJobEvents(paths, jobId);
+  return events
+    .filter((event) => event.event === "human_rework" && typeof event.note === "string" && event.note.length > 0)
+    .filter((event) => event.round === undefined || event.round < round)
+    .map((event) => event.note as string);
 }
 
 function describe(error: unknown): string {

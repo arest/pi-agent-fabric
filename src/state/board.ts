@@ -70,6 +70,11 @@ export interface HistoryEntry {
    * distinct, auditable history even when they repeat an event name.
    */
   round?: number;
+  /**
+   * Operator note attached to a human-driven transition (approve, rework,
+   * retry, cancel). Optional; recorded verbatim as untrusted text.
+   */
+  note?: string;
 }
 
 export interface JobPolicySnapshot {
@@ -95,6 +100,12 @@ export interface Job {
   verdicts: Record<string, string>;
   approval: ApprovalDecision | null;
   pull_request: PullRequest | null;
+  /**
+   * Human-controlled promotion PR prepared by `/factory promote`. Recorded
+   * separately from the job's own `pull_request` so a promotion is never
+   * confused with ordinary publication, and is never merged by the factory.
+   */
+  promotion: PullRequest | null;
   created_at: string;
   updated_at: string;
   history: HistoryEntry[];
@@ -146,7 +157,7 @@ function parseHistory(value: unknown, jobId: string): HistoryEntry[] {
     if (!isRecord(entry)) {
       throw new BoardIntegrityError(`job ${jobId} history[${index}] is not an object`);
     }
-    const { at, to, actor, event, round } = entry;
+    const { at, to, actor, event, round, note } = entry;
     const from = entry.from;
     if (typeof at !== "string" || typeof actor !== "string") {
       throw new BoardIntegrityError(`job ${jobId} history[${index}] is missing required text fields`);
@@ -157,10 +168,15 @@ function parseHistory(value: unknown, jobId: string): HistoryEntry[] {
     if (round !== undefined && !isValidRound(round)) {
       throw new BoardIntegrityError(`job ${jobId} history[${index}] has an invalid round`);
     }
+    if (note !== undefined && typeof note !== "string") {
+      throw new BoardIntegrityError(`job ${jobId} history[${index}] has a non-text note`);
+    }
     if (!isStage(to) || !(from === null || isStage(from))) {
       throw new BoardIntegrityError(`job ${jobId} history[${index}] has an invalid stage`);
     }
-    return { at, from: from as Stage | null, to, actor, event, round: round as number | undefined };
+    return note === undefined
+      ? { at, from: from as Stage | null, to, actor, event, round: round as number | undefined }
+      : { at, from: from as Stage | null, to, actor, event, round: round as number | undefined, note };
   });
 }
 
@@ -252,6 +268,7 @@ function parseJob(value: unknown, index: number): Job {
     verdicts,
     approval: parseApproval(value.approval, id),
     pull_request: parsePullRequest(value.pull_request, id),
+    promotion: parsePullRequest(value.promotion, id),
     created_at: createdAt,
     updated_at: updatedAt,
     history: parseHistory(value.history, id),
