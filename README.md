@@ -11,19 +11,22 @@ The package ships:
 
 ## Status
 
-Bootstrap, spec, builder, reviewer, and approver slices are implemented.
-`/factory <feature>` validates repository policy and creates a new job
-scaffold, `/factory spec <job-id>` runs the spec-writer stage, and the builder
-workflow runs in an isolated job worktree while capturing validated `build.md`
-evidence. The review workflow selects configured read-only reviewers, persists
-skipped roles and reasons, validates every report, waits for all selected
-reports, and routes blocking findings into numbered rework rounds that retain
-prior evidence or into human escalation when the round limit is exhausted.
-The approval workflow runs an independent decision gate over spec,
-implementation evidence, and policy context, then persists `APPROVE` or
-`ESCALATE` as a distinct durable decision.
-Later tickets add GitHub publication, operator commands, crash recovery, and
-the read-only dashboard.
+Bootstrap, spec, builder, reviewer, approver, and publication slices are
+implemented. `/factory <feature>` validates repository policy and creates a new
+job scaffold, `/factory spec <job-id>` runs the spec-writer stage, and the
+builder workflow runs in an isolated job worktree while capturing validated
+`build.md` evidence. The review workflow selects configured read-only
+reviewers, persists skipped roles and reasons, validates every report, waits
+for all selected reports, and routes blocking findings into numbered rework
+rounds that retain prior evidence or into human escalation when the round limit
+is exhausted. The approval workflow runs an independent decision gate over
+spec, implementation evidence, and policy context, then persists `APPROVE` or
+`ESCALATE` as a distinct durable decision. The publication workflow performs a
+GitHub preflight (auth, repository identity, PR capability, and checks-read
+capability), opens or monitors a PR to `develop`, and moves approved jobs to
+`waiting_for_human` with no auto-merge.
+Later tickets add operator commands, crash recovery, and the read-only
+dashboard.
 
 ```text
 /factory <feature>      start a job scaffold           (implemented)

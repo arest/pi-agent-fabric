@@ -96,3 +96,7 @@ export function jobReviewLock(paths: FactoryPaths, jobId: string): string {
 export function jobApprovalLock(paths: FactoryPaths, jobId: string): string {
   return path.join(jobDir(paths, jobId), ".approval.lock");
 }
+
+export function jobPublicationLock(paths: FactoryPaths, jobId: string): string {
+  return path.join(jobDir(paths, jobId), ".publication.lock");
+}
