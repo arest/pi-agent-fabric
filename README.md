@@ -7,7 +7,8 @@ The package ships:
 
 - a Pi **extension** that owns the `/factory` command and is the only writer of
   durable factory state;
-- a Pi **skill** that documents the workflow, role contracts, and GitHub policy.
+- a Pi **skill** that documents the workflow, role contracts, and GitHub policy;
+- a self-contained, read-only `factory/dashboard.html` operational dashboard.
 
 ## Status
 
@@ -30,7 +31,7 @@ history and never delete work or merge. `/factory recover` reconciles every
 job against its durable evidence — job artifacts, Git, and GitHub — and resumes
 jobs from the last safe durable stage after a restart, escalating to a human
 when sources disagree.
-Later tickets add the read-only dashboard.
+The read-only dashboard and orchestration-boundary regression suite are included.
 
 ```text
 /factory <feature>                       start a job scaffold            (implemented)

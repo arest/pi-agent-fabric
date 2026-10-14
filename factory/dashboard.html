@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline';">
+  <title>Agent Fabric Factory</title>
+  <style>
+    :root { color-scheme: light dark; --bg: #10141c; --panel: #192131; --text: #edf2f7; --muted: #a9b5c4; --line: #334155; --accent: #7dd3fc; --good: #86efac; --warn: #fde68a; --bad: #fca5a5; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 2rem; background: var(--bg); color: var(--text); font: 15px/1.45 system-ui, sans-serif; }
+    main { max-width: 1400px; margin: auto; }
+    header { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; margin-bottom: 1.5rem; }
+    h1, h2, h3 { margin: 0; }
+    h1 { font-size: 1.6rem; }
+    h2 { font-size: 1.1rem; margin-bottom: .75rem; }
+    h3 { font-size: 1rem; }
+    #updated, .muted { color: var(--muted); }
+    #error { color: var(--bad); min-height: 1.45em; }
+    #jobs { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 1rem; }
+    .job { background: var(--panel); border: 1px solid var(--line); border-radius: .6rem; padding: 1rem; box-shadow: 0 4px 16px #0003; }
+    .job-head, .row { display: flex; justify-content: space-between; gap: .75rem; align-items: center; }
+    .job-head { align-items: flex-start; margin-bottom: .75rem; }
+    .feature { margin: .25rem 0 .8rem; color: var(--muted); overflow-wrap: anywhere; }
+    .pill, .chip { display: inline-block; border: 1px solid var(--line); border-radius: 999px; padding: .15rem .5rem; font-size: .78rem; white-space: nowrap; }
+    .active, .good { color: var(--good); } .blocked, .needs-human, .failed { color: var(--bad); } .waiting_for_human, .warn { color: var(--warn); }
+    .section { border-top: 1px solid var(--line); margin-top: .8rem; padding-top: .8rem; }
+    .chips { display: flex; flex-wrap: wrap; gap: .35rem; }
+    a { color: var(--accent); }
+    ul { margin: .4rem 0 0; padding-left: 1.2rem; }
+    .empty { color: var(--muted); padding: 2rem; text-align: center; border: 1px dashed var(--line); border-radius: .6rem; }
+    .history { max-height: 9rem; overflow: auto; }
+    .small { font-size: .84rem; }
+    @media (max-width: 600px) { body { padding: 1rem; } header { display: block; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div><h1>Agent Fabric Factory</h1><div class="muted">Read-only operational dashboard</div></div>
+      <div id="updated" aria-live="polite">Loading board…</div>
+    </header>
+    <div id="error" role="alert"></div>
+    <section id="jobs" aria-live="polite"></section>
+  </main>
+  <script>
+    (() => {
+      "use strict";
+      const jobs = document.querySelector("#jobs");
+      const error = document.querySelector("#error");
+      const updated = document.querySelector("#updated");
+      const esc = (value) => String(value ?? "");
+      const el = (tag, text, className) => {
+        const node = document.createElement(tag);
+        if (className) node.className = className;
+        if (text !== undefined) node.textContent = text;
+        return node;
+      };
+      const link = (parent, label, href) => {
+        const a = el("a", label);
+        // Board data is untrusted. Only the known local artifact paths and
+        // absolute HTTP(S) PR links may become navigable URLs.
+        const safeHref = href.startsWith("jobs/") || /^https?:\/\//i.test(href) ? href : "#";
+        a.href = safeHref;
+        a.target = "_blank";
+        a.rel = "noopener noreferrer";
+        parent.append(a);
+      };
+      const artifactLinks = (job) => {
+        const list = el("ul", undefined, "small");
+        const base = `jobs/${encodeURIComponent(esc(job.id))}/`;
+        [["spec", "spec.md"], ["build", "build.md"], ["review plan", "review-plan.json"], ["decision", "decision.md"]].forEach(([label, file]) => {
+          const item = el("li"); link(item, label, base + file); list.append(item);
+        });
+        const selected = job.review_plan && Array.isArray(job.review_plan.selected) ? job.review_plan.selected : [];
+        const round = Number.isInteger(job.round) && job.round > 0 ? job.round : 1;
+        selected.forEach((role) => {
+          const item = el("li"); link(item, `round ${round} review: ${role}`, `${base}round-${round}/review-${encodeURIComponent(esc(role))}.md`); list.append(item);
+        });
+        return list;
+      };
+      const renderJob = (job) => {
+        const card = el("article", undefined, "job");
+        const head = el("div", undefined, "job-head");
+        const title = el("div"); title.append(el("h3", esc(job.id))); title.append(el("div", esc(job.branch), "muted small"));
+        const status = el("span", `${esc(job.stage)} / ${esc(job.status)}`, `pill ${esc(job.status)}`); head.append(title, status); card.append(head);
+        card.append(el("p", esc(job.feature), "feature"));
+        const details = el("div", "");
+        details.append(el("div", `Round ${esc(job.round)} · target ${esc(job.target)} · mode ${esc(job.mode)}`, "small muted"));
+        const plan = job.review_plan;
+        const review = el("div", undefined, "section"); review.append(el("strong", "Reviewers"));
+        const chips = el("div", undefined, "chips");
+        (plan && Array.isArray(plan.selected) ? plan.selected : []).forEach((role) => {
+          const verdict = job.verdicts && job.verdicts[`${role}:round-${job.round}`] || job.verdicts && job.verdicts[role] || "pending";
+          chips.append(el("span", `${esc(role)}: ${esc(verdict)}`, "chip"));
+        });
+        (plan && Array.isArray(plan.skipped) ? plan.skipped : []).forEach((role) => chips.append(el("span", `${esc(role)}: skipped`, "chip muted")));
+        if (!chips.childNodes.length) chips.append(el("span", "No reviewer plan recorded", "muted small"));
+        review.append(chips); details.append(review);
+        const pr = el("div", undefined, "section"); pr.append(el("strong", "Pull request / CI"));
+        if (job.pull_request) {
+          const row = el("div", undefined, "row"); link(row, "Open PR", job.pull_request.url); row.append(el("span", `${esc(job.pull_request.state)} · CI ${esc(job.pull_request.merge_state)}`, "small")); pr.append(row);
+        } else pr.append(el("div", "No pull request published", "muted small"));
+        details.append(pr);
+        const artifacts = el("div", undefined, "section"); artifacts.append(el("strong", "Artifacts"), artifactLinks(job)); details.append(artifacts);
+        const history = el("details", undefined, "section"); history.append(el("summary", `History (${Array.isArray(job.history) ? job.history.length : 0})`));
+        const historyList = el("ul", undefined, "history small"); (Array.isArray(job.history) ? job.history : []).slice().reverse().forEach((entry) => historyList.append(el("li", `${esc(entry.at)}: ${esc(entry.from || "start")} → ${esc(entry.to)}${entry.event ? ` (${esc(entry.event)})` : ""}`))); history.append(historyList); details.append(history);
+        card.append(details); return card;
+      };
+      const render = (board) => {
+        jobs.replaceChildren();
+        const entries = board && Array.isArray(board.jobs) ? board.jobs : [];
+        if (!entries.length) jobs.append(el("div", "No factory jobs yet.", "empty"));
+        else entries.forEach((job) => jobs.append(renderJob(job)));
+        updated.textContent = `Board v${esc(board && board.version)} · refreshed ${new Date().toLocaleTimeString()}`;
+      };
+      const poll = async () => {
+        try {
+          const response = await fetch(`board.json?ts=${Date.now()}`, { cache: "no-store", method: "GET" });
+          if (!response.ok) throw new Error(`board request failed (${response.status})`);
+          render(await response.json()); error.textContent = "";
+        } catch (cause) { error.textContent = `Unable to load board: ${cause instanceof Error ? cause.message : String(cause)}`; }
+      };
+      poll();
+      window.setInterval(poll, 5000);
+    })();
+  </script>
+</body>
+</html>

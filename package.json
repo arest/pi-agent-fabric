@@ -19,6 +19,7 @@
   },
   "files": [
     "extensions",
+    "factory",
     "skills",
     "src",
     "README.md"

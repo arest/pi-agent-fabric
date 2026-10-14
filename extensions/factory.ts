@@ -16,7 +16,8 @@
  *   (artifacts, Git, GitHub) after a restart and resumes from the last safe
  *   durable stage; disagreements escalate to a human.
  *
- * Later tickets add the read-only dashboard.
+ * The bundled factory/dashboard.html is a read-only polling view; it never
+ * participates in the command or board-writing paths.
  */
 
 import path from "node:path";
