@@ -49,7 +49,18 @@
       const jobs = document.querySelector("#jobs");
       const error = document.querySelector("#error");
       const updated = document.querySelector("#updated");
-      const esc = (value) => String(value ?? "");
+      // Every untrusted board value reaches the DOM through `text` +
+      // `textContent`, never innerHTML, so markup in a feature title or review
+      // note renders as literal characters.
+      const text = (value) => String(value ?? "");
+      const toArray = (value) => (Array.isArray(value) ? value : []);
+      /**
+       * Board key for a reviewer's verdict in one round. Mirrors
+       * `reviewVerdictKey` in src/artifacts/review.ts; the page is a
+       * self-contained artifact and cannot import it, so tests/dashboard.test.ts
+       * pins the two formats together.
+       */
+      const verdictKey = (role, round) => `${text(role)}:round-${text(round)}`;
       const el = (tag, text, className) => {
         const node = document.createElement(tag);
         if (className) node.className = className;
@@ -68,51 +79,52 @@
       };
       const artifactLinks = (job) => {
         const list = el("ul", undefined, "small");
-        const base = `jobs/${encodeURIComponent(esc(job.id))}/`;
-        [["spec", "spec.md"], ["build", "build.md"], ["review plan", "review-plan.json"], ["decision", "decision.md"]].forEach(([label, file]) => {
-          const item = el("li"); link(item, label, base + file); list.append(item);
+        const base = `jobs/${encodeURIComponent(text(job.id))}/`;
+        ["spec.md", "build.md", "review-plan.json", "decision.md"].forEach((file) => {
+          const item = el("li"); link(item, file, base + file); list.append(item);
         });
-        const selected = job.review_plan && Array.isArray(job.review_plan.selected) ? job.review_plan.selected : [];
         const round = Number.isInteger(job.round) && job.round > 0 ? job.round : 1;
-        selected.forEach((role) => {
-          const item = el("li"); link(item, `round ${round} review: ${role}`, `${base}round-${round}/review-${encodeURIComponent(esc(role))}.md`); list.append(item);
+        toArray(job.review_plan && job.review_plan.selected).forEach((role) => {
+          const item = el("li"); link(item, `round ${round} review: ${role}`, `${base}round-${round}/review-${encodeURIComponent(text(role))}.md`); list.append(item);
         });
         return list;
       };
       const renderJob = (job) => {
         const card = el("article", undefined, "job");
         const head = el("div", undefined, "job-head");
-        const title = el("div"); title.append(el("h3", esc(job.id))); title.append(el("div", esc(job.branch), "muted small"));
-        const status = el("span", `${esc(job.stage)} / ${esc(job.status)}`, `pill ${esc(job.status)}`); head.append(title, status); card.append(head);
-        card.append(el("p", esc(job.feature), "feature"));
+        const title = el("div"); title.append(el("h3", text(job.id))); title.append(el("div", text(job.branch), "muted small"));
+        const status = el("span", `${text(job.stage)} / ${text(job.status)}`, `pill ${text(job.status)}`); head.append(title, status); card.append(head);
+        card.append(el("p", text(job.feature), "feature"));
         const details = el("div", "");
-        details.append(el("div", `Round ${esc(job.round)} · target ${esc(job.target)} · mode ${esc(job.mode)}`, "small muted"));
-        const plan = job.review_plan;
+        details.append(el("div", `Round ${text(job.round)} · target ${text(job.target)} · mode ${text(job.mode)}`, "small muted"));
+        const plan = job.review_plan || {};
+        const verdicts = job.verdicts || {};
         const review = el("div", undefined, "section"); review.append(el("strong", "Reviewers"));
         const chips = el("div", undefined, "chips");
-        (plan && Array.isArray(plan.selected) ? plan.selected : []).forEach((role) => {
-          const verdict = job.verdicts && job.verdicts[`${role}:round-${job.round}`] || job.verdicts && job.verdicts[role] || "pending";
-          chips.append(el("span", `${esc(role)}: ${esc(verdict)}`, "chip"));
+        toArray(plan.selected).forEach((role) => {
+          const verdict = verdicts[verdictKey(role, job.round)] || verdicts[role] || "pending";
+          chips.append(el("span", `${text(role)}: ${text(verdict)}`, "chip"));
         });
-        (plan && Array.isArray(plan.skipped) ? plan.skipped : []).forEach((role) => chips.append(el("span", `${esc(role)}: skipped`, "chip muted")));
+        toArray(plan.skipped).forEach((role) => chips.append(el("span", `${text(role)}: skipped`, "chip muted")));
         if (!chips.childNodes.length) chips.append(el("span", "No reviewer plan recorded", "muted small"));
         review.append(chips); details.append(review);
         const pr = el("div", undefined, "section"); pr.append(el("strong", "Pull request / CI"));
         if (job.pull_request) {
-          const row = el("div", undefined, "row"); link(row, "Open PR", job.pull_request.url); row.append(el("span", `${esc(job.pull_request.state)} · CI ${esc(job.pull_request.merge_state)}`, "small")); pr.append(row);
+          const row = el("div", undefined, "row"); link(row, "Open PR", job.pull_request.url); row.append(el("span", `${text(job.pull_request.state)} · CI ${text(job.pull_request.merge_state)}`, "small")); pr.append(row);
         } else pr.append(el("div", "No pull request published", "muted small"));
         details.append(pr);
         const artifacts = el("div", undefined, "section"); artifacts.append(el("strong", "Artifacts"), artifactLinks(job)); details.append(artifacts);
-        const history = el("details", undefined, "section"); history.append(el("summary", `History (${Array.isArray(job.history) ? job.history.length : 0})`));
-        const historyList = el("ul", undefined, "history small"); (Array.isArray(job.history) ? job.history : []).slice().reverse().forEach((entry) => historyList.append(el("li", `${esc(entry.at)}: ${esc(entry.from || "start")} → ${esc(entry.to)}${entry.event ? ` (${esc(entry.event)})` : ""}`))); history.append(historyList); details.append(history);
+        const history = toArray(job.history);
+        const historyBlock = el("details", undefined, "section"); historyBlock.append(el("summary", `History (${history.length})`));
+        const historyList = el("ul", undefined, "history small"); history.slice().reverse().forEach((entry) => historyList.append(el("li", `${text(entry.at)}: ${text(entry.from || "start")} → ${text(entry.to)}${entry.event ? ` (${text(entry.event)})` : ""}`))); historyBlock.append(historyList); details.append(historyBlock);
         card.append(details); return card;
       };
       const render = (board) => {
         jobs.replaceChildren();
-        const entries = board && Array.isArray(board.jobs) ? board.jobs : [];
+        const entries = toArray(board && board.jobs);
         if (!entries.length) jobs.append(el("div", "No factory jobs yet.", "empty"));
         else entries.forEach((job) => jobs.append(renderJob(job)));
-        updated.textContent = `Board v${esc(board && board.version)} · refreshed ${new Date().toLocaleTimeString()}`;
+        updated.textContent = `Board v${text(board && board.version)} · refreshed ${new Date().toLocaleTimeString()}`;
       };
       const poll = async () => {
         try {

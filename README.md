@@ -31,6 +31,7 @@ history and never delete work or merge. `/factory recover` reconciles every
 job against its durable evidence — job artifacts, Git, and GitHub — and resumes
 jobs from the last safe durable stage after a restart, escalating to a human
 when sources disagree.
+
 The read-only dashboard and orchestration-boundary regression suite are included.
 
 ```text
