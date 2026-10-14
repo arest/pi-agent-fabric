@@ -1,0 +1,7 @@
+# Real-stack PoC execution
+$ node piolium/findings/M2-factory-symlink-path-escape/poc.js
+# Exit status: 0
+
+# The script invokes src/workflow/start-job.ts in a temporary checkout, creates
+# factory/jobs as a symlink, and verifies the actual events.jsonl realpath and
+# contents outside the checkout.

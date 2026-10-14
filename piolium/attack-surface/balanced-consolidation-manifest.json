@@ -1,0 +1,25 @@
+{
+	"generated_at": "2026-10-14T14:36:09.600Z",
+	"source_prefixes": [
+		"p8-"
+	],
+	"promoted": [
+		{
+			"id": "M1",
+			"slug": "policy-selected-command-execution",
+			"severity": "medium",
+			"original_id": "p8-001",
+			"source_path": "/Users/andrea/Sites/pi-agent-fabric/piolium/findings-draft/p8-001-policy-selected-command-execution.md",
+			"finding_dir": "/Users/andrea/Sites/pi-agent-fabric/piolium/findings/M1-policy-selected-command-execution"
+		},
+		{
+			"id": "M2",
+			"slug": "factory-symlink-path-escape",
+			"severity": "medium",
+			"original_id": "p8-002",
+			"source_path": "/Users/andrea/Sites/pi-agent-fabric/piolium/findings-draft/p8-002-factory-symlink-path-escape.md",
+			"finding_dir": "/Users/andrea/Sites/pi-agent-fabric/piolium/findings/M2-factory-symlink-path-escape"
+		}
+	],
+	"dropped": []
+}

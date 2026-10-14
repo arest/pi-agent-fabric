@@ -1,0 +1,5 @@
+Node: v24.5.0
+Repository: /Users/andrea/Sites/pi-agent-fabric
+Execution: actual src/workflow/start-job.ts stack
+Target: temporary checkout with pre-existing factory/jobs symlink
+Result: confirmed; job events.jsonl resolved outside checkout

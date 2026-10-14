@@ -1,0 +1,103 @@
+{
+	"audits": [
+		{
+			"audit_id": "2026-10-14T14:27:41.299Z",
+			"mode": "balanced",
+			"started_at": "2026-10-14T14:27:41.299Z",
+			"completed_at": "2026-10-14T14:38:19.326Z",
+			"status": "complete",
+			"phases": {
+				"L1": {
+					"status": "complete",
+					"attempt": 1,
+					"max_attempts": 6,
+					"started_at": "2026-10-14T14:27:41.320Z",
+					"completed_at": "2026-10-14T14:28:42.033Z"
+				},
+				"L2": {
+					"status": "complete",
+					"attempt": 1,
+					"max_attempts": 6,
+					"started_at": "2026-10-14T14:28:42.034Z",
+					"completed_at": "2026-10-14T14:30:37.182Z"
+				},
+				"L3": {
+					"status": "complete",
+					"attempt": 1,
+					"max_attempts": 6,
+					"started_at": "2026-10-14T14:30:37.184Z",
+					"completed_at": "2026-10-14T14:34:59.420Z"
+				},
+				"L4": {
+					"status": "complete",
+					"attempt": 1,
+					"max_attempts": 6,
+					"started_at": "2026-10-14T14:30:37.266Z",
+					"completed_at": "2026-10-14T14:31:45.811Z"
+				},
+				"L5": {
+					"status": "complete",
+					"attempt": 1,
+					"max_attempts": 6,
+					"started_at": "2026-10-14T14:34:59.424Z",
+					"completed_at": "2026-10-14T14:36:09.588Z"
+				},
+				"L6": {
+					"status": "complete",
+					"started_at": "2026-10-14T14:36:09.601Z",
+					"completed_at": "2026-10-14T14:37:09.619Z"
+				},
+				"L6b": {
+					"status": "complete",
+					"started_at": "2026-10-14T14:37:09.620Z",
+					"completed_at": "2026-10-14T14:37:46.491Z"
+				},
+				"L6c": {
+					"status": "complete",
+					"attempt": 1,
+					"max_attempts": 6,
+					"started_at": "2026-10-14T14:37:46.492Z",
+					"completed_at": "2026-10-14T14:38:19.114Z"
+				},
+				"L7": {
+					"status": "complete",
+					"started_at": "2026-10-14T14:38:19.118Z",
+					"completed_at": "2026-10-14T14:38:19.325Z"
+				},
+				"L6:M1": {
+					"status": "complete",
+					"attempt": 1,
+					"max_attempts": 6,
+					"started_at": "2026-10-14T14:36:09.607Z",
+					"completed_at": "2026-10-14T14:37:09.618Z"
+				},
+				"L6:M2": {
+					"status": "complete",
+					"attempt": 1,
+					"max_attempts": 6,
+					"started_at": "2026-10-14T14:36:09.663Z",
+					"completed_at": "2026-10-14T14:36:49.475Z"
+				},
+				"L6b:M1": {
+					"status": "complete",
+					"attempt": 1,
+					"max_attempts": 6,
+					"started_at": "2026-10-14T14:37:09.622Z",
+					"completed_at": "2026-10-14T14:37:46.489Z"
+				},
+				"L6b:M2": {
+					"status": "complete",
+					"attempt": 1,
+					"max_attempts": 6,
+					"started_at": "2026-10-14T14:37:09.696Z",
+					"completed_at": "2026-10-14T14:37:43.466Z"
+				}
+			},
+			"agent_sdk": "pi",
+			"commit": "7491206657accbfa06cbf56e5b4ee453ee28620b",
+			"branch": "main",
+			"repository": "arest/pi-agent-fabric",
+			"history_available": true
+		}
+	]
+}
