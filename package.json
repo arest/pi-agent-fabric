@@ -1,7 +1,6 @@
 {
   "name": "@arest/pi-agent-fabric-factory",
   "version": "0.1.0",
-  "private": true,
   "description": "Reusable Pi package that turns a feature request into a reviewed pull request with human merge authority preserved.",
   "type": "module",
   "license": "MIT",
@@ -24,6 +23,9 @@
     "src",
     "README.md"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "keywords": [
     "pi-package",
     "pi",
