@@ -126,27 +126,17 @@ function texts(container: FakeNode): string[] {
     .filter((value) => value.length > 0);
 }
 
-test("dashboard is a self-contained read-only board view", async () => {
+test("dashboard is a self-contained document with no mutation surface", async () => {
   const source = await fs.readFile(dashboardFile, "utf8");
 
   assert.match(source, /Read-only operational dashboard/);
-  assert.match(source, /method: "GET"/);
-  for (const requiredLabel of ["Reviewers", "Pull request / CI", "Artifacts", "History"]) {
-    assert.match(source, new RegExp(requiredLabel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-  }
-
-  // A dashboard may navigate to evidence, but it must not expose workflow
-  // mutation controls or send mutation requests.
-  assert.doesNotMatch(source, /\b(?:approve|rework|merge|cancel)\b/i);
-});
-
-test("dashboard renders board values as text and constrains external links", async () => {
-  const source = await fs.readFile(dashboardFile, "utf8");
-
-  assert.match(source, /textContent/);
-  assert.match(source, /href\.startsWith\("jobs\/"\)/);
-  assert.match(source, /rel = "noopener noreferrer"/);
-  assert.doesNotThrow(() => new vm.Script(source.match(/<script>([\s\S]*?)<\/script>/)?.[1] ?? ""), "dashboard script must parse as JavaScript");
+  assert.doesNotMatch(source, /<form\b/i, "the dashboard must not submit anything");
+  assert.doesNotMatch(source, /<script[^>]+src=/i, "the dashboard must not load remote scripts");
+  assert.doesNotMatch(source, /<link[^>]+href="https?:/i, "the dashboard must not load remote stylesheets");
+  assert.doesNotThrow(
+    () => new vm.Script(source.match(/<script>([\s\S]*?)<\/script>/)?.[1] ?? ""),
+    "dashboard script must parse as JavaScript",
+  );
 });
 
 test("dashboard renders untrusted board data as inert text and links", async () => {
@@ -166,6 +156,19 @@ test("dashboard renders untrusted board data as inert text and links", async () 
         verdicts: { "code:round-2": "CHANGES" },
         pull_request: { url: "javascript:alert(1)", state: "OPEN", merge_state: "WAITING_FOR_HUMAN" },
         history: [{ at: "2026-02-03T04:05:06.000Z", from: "build", to: "review", actor: "factory" }],
+      },
+      {
+        id: "../escape",
+        feature: "Path escape attempt",
+        branch: "factory/003-escape",
+        target: "develop",
+        stage: "review",
+        status: "active",
+        round: 1,
+        review_plan: { selected: [], skipped: [], reasons: {} },
+        verdicts: {},
+        pull_request: { url: "http://github.com/arest/pi-agent-fabric/pull/2", state: "OPEN", merge_state: "WAITING_FOR_HUMAN" },
+        history: [],
       },
       {
         id: "002-good",
@@ -188,18 +191,26 @@ test("dashboard renders untrusted board data as inert text and links", async () 
   const rendered = flatten(jobs);
 
   // Markup in board text is never parsed into elements.
-  assert.deepEqual([...new Set(rendered.map((node) => node.tagName))].filter((tag) => tag === "img" || tag === "script"), []);
+  assert.deepEqual(rendered.filter((node) => node.tagName === "img" || node.tagName === "script"), []);
   assert.ok(texts(jobs).some((value) => value.includes("<script>alert('pwned')</script>")), "feature text must render literally");
 
-  // Only local artifact paths and absolute HTTP(S) URLs become navigable.
-  const labels = linkLabels(jobs);
-  const hrefs = links(jobs).map((node) => node.href);
-  assert.equal(labels.filter((label) => label === "Open PR").length, 2);
-  assert.deepEqual(hrefs.filter((href) => href.startsWith("javascript:")), []);
-  assert.ok(hrefs.includes("#"), "an unsafe PR URL must be neutralized");
-  assert.ok(hrefs.includes("https://github.com/arest/pi-agent-fabric/pull/13"), "a safe PR URL must survive");
-  assert.ok(hrefs.every((href) => href === "#" || href.startsWith("jobs/") || href.startsWith("https://")));
+  // Every required state section is rendered from the board, not hardcoded.
+  for (const label of ["Reviewers", "Pull request / CI", "Artifacts", "History"]) {
+    assert.ok(texts(jobs).some((value) => value.startsWith(label)), `expected a ${label} section`);
+  }
+
+  // Only local artifact paths and absolute HTTPS URLs become navigable.
+  const anchors = links(jobs);
+  assert.deepEqual([...new Set(anchors.map((node) => node.attributes.target))], ["_blank"]);
+  assert.deepEqual([...new Set(anchors.map((node) => node.attributes.rel))], ["noopener noreferrer"]);
+  const hrefs = anchors.map((node) => node.href);
+  assert.equal(linkLabels(jobs).filter((label) => label === "Open PR").length, 3);
+  assert.deepEqual(hrefs.filter((href) => /^(javascript|data|http):/i.test(href)), []);
+  assert.deepEqual(hrefs.filter((href) => href.includes("..")), []);
+  assert.ok(hrefs.includes("https://github.com/arest/pi-agent-fabric/pull/13"), "a safe HTTPS PR URL must survive");
+  assert.ok(hrefs.filter((href) => href === "#").length >= 2, "unsafe PR URLs must be neutralized");
   assert.ok(hrefs.some((href) => href.startsWith("jobs/")), "artifact links must stay local");
+  assert.ok(hrefs.every((href) => href === "#" || href.startsWith("jobs/") || href.startsWith("https://")));
 
   // Read-only: every request is a GET and nothing mutates the board.
   assert.ok(calls.length > 0, "the dashboard must poll the board");

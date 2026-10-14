@@ -61,18 +61,25 @@
        * pins the two formats together.
        */
       const verdictKey = (role, round) => `${text(role)}:round-${text(round)}`;
-      const el = (tag, text, className) => {
+      const el = (tag, value, className) => {
         const node = document.createElement(tag);
         if (className) node.className = className;
-        if (text !== undefined) node.textContent = text;
+        if (value !== undefined) node.textContent = value;
         return node;
       };
+      /**
+       * Board data is untrusted, so navigable URLs are deny-by-default: only
+       * local artifact paths stay inside the job directory, and only absolute
+       * HTTPS links (GitHub is HTTPS-only) may leave it. `javascript:`, `data:`,
+       * and `http:` URLs, whitespace-smuggled schemes, and `..` escapes are all
+       * neutralized to "#".
+       */
+      const isSafeHref = (href) =>
+        (/^https:\/\//i.test(href) && !/[\s\u0000-\u001f]/.test(href)) ||
+        (href.startsWith("jobs/") && !href.includes(".."));
       const link = (parent, label, href) => {
         const a = el("a", label);
-        // Board data is untrusted. Only the known local artifact paths and
-        // absolute HTTP(S) PR links may become navigable URLs.
-        const safeHref = href.startsWith("jobs/") || /^https?:\/\//i.test(href) ? href : "#";
-        a.href = safeHref;
+        a.href = isSafeHref(href) ? href : "#";
         a.target = "_blank";
         a.rel = "noopener noreferrer";
         parent.append(a);
